@@ -1,4 +1,17 @@
-# Influencer Revenue Pipeline (Databricks Asset Bundle)
+# Traackr Influencer Revenue Decision Platform
+
+## Start Here: Verifiable AI and Runtime Proof
+
+- Executable `ai_gen` SQL: [`AI_GEN_RECOMMENDATIONS.sql`](AI_GEN_RECOMMENDATIONS.sql)
+- Orchestrated AI job: [`src/jobs/generate_ai_insights.py`](src/jobs/generate_ai_insights.py)
+- Executable model-serving call: [`MODEL_ENDPOINT_RECOMMENDATION.py`](MODEL_ENDPOINT_RECOMMENDATION.py)
+- Actual text run output: [`EXECUTION_EVIDENCE.md`](EXECUTION_EVIDENCE.md)
+- Full FE Bar requirement map: [`FE_BAR_SUBMISSION.md`](FE_BAR_SUBMISSION.md)
+- Business presentation: [`presentation/traackr_fe_bar_deck.md`](presentation/traackr_fe_bar_deck.md)
+
+This repository is an independently implemented Traackr prototype using synthetic data. The code, prompts, orchestration, deployment configuration, and captured execution output required to evaluate the build are included directly in the repository.
+
+## Architecture
 
 Production-shape Databricks Asset Bundle that deploys, in one `databricks bundle deploy`:
 

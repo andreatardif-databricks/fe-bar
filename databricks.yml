@@ -247,3 +247,7 @@ resources:
             name: "Traackr Influencer Revenue Agent"
             space_id: ${var.genie_space_id}
             permission: CAN_RUN
+        - name: campaign-recommendation-model
+          serving_endpoint:
+            name: databricks-claude-haiku-5-5
+            permission: CAN_QUERY

@@ -27,6 +27,8 @@ env:
     value: "at_10526_workspace"
   - name: DATABRICKS_GENIE_SPACE_ID
     valueFrom: genie-space
+  - name: SERVING_ENDPOINT
+    valueFrom: campaign-recommendation-model
   - name: SDP_PIPELINE_ID
     value: "6bafb573-8965-4f9e-bf4e-c8f7e06a9872"
   - name: SYNCED_CREATORS_PIPELINE_ID

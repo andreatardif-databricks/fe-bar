@@ -21,7 +21,7 @@ The build used an AI coding agent as a teammate for rubric gap analysis, impleme
 | Lakeflow | Four-layer serverless SDP in `src/pipeline/01_bronze.sql` through `04_platinum.sql` | `evidence/orchestration_run.md` |
 | Unity Catalog | Managed schema, volumes, tables, comments, constraints, metric views, and app grants in `databricks.yml` | `evidence/governance_and_data.md` |
 | Lakebase | Triggered synced tables for brand, campaign, and creator operational serving | `evidence/lakebase_and_api.md` |
-| ML or GenAI | `ai_gen` creates persisted, grounded campaign actions in `ai_campaign_insights` | `evidence/genai_output.md` |
+| ML or GenAI | `ai_gen` persists grounded campaign actions; an explicit Foundation Model API route calls `databricks-claude-haiku-5-5` | `AI_GEN_RECOMMENDATIONS.sql`, `MODEL_ENDPOINT_RECOMMENDATION.py`, `EXECUTION_EVIDENCE.md` |
 | Genie Agent | Curated Traackr agent over performance, renewal, AI, and API-reference data | `evidence/genie_agent.md` |
 | Databricks App | FastAPI developer portal, business recommendations, API playground, architecture, and latency demo | `evidence/lakebase_and_api.md` |
 
@@ -34,6 +34,10 @@ The day-2 job encodes the dependency chain. GenAI runs only after Lakeflow succe
 ## Submission artifacts
 
 - Build source: this repository
+- Evaluator starting point: `README.md`
+- Consolidated real output: `EXECUTION_EVIDENCE.md`
+- Executable AI generation: `AI_GEN_RECOMMENDATIONS.sql` and `src/jobs/generate_ai_insights.py`
+- Executable model endpoint call: `MODEL_ENDPOINT_RECOMMENDATION.py` and `POST /v1/model-recommendation`
 - Readable execution evidence: `evidence/`
 - Business presentation: `presentation/traackr_fe_bar_deck.md`
 - Prior build conversation: `01a11d83-260a-7802-9307-20ca1bffeba5`

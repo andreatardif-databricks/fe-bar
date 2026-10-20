@@ -1,6 +1,6 @@
 # Customer-Facing API — Overview
 
-This is **not** the React/AppKit operational app from the demo-skill template. It's a slim **FastAPI service** deployed on Databricks Apps, exposing public REST endpoints that brand clients (Coach, L'Oréal, Adidas, ...) call from their own portals. There is no UI, no chat dock, no agent, no operations queue — those live in the React template and are out of scope.
+This is a slim **FastAPI service** deployed on Databricks Apps, exposing REST endpoints that brand clients call from their own portals. The implementation intentionally prioritizes a readable API surface, low-latency Lakebase serving, and a focused business workflow.
 
 The service reads from **Lakebase** (Postgres synced from Platinum — see `03-lakebase-sync.md`). It does not query the lakehouse warehouse for hot endpoints; sub-100 ms p95 is the target.
 
