@@ -28,12 +28,14 @@ Today those answers require fragmented CRM, social, advertising, contract, and b
 - Reallocate influencer spend using attributed revenue and ROI.
 - Protect renewal ARR with a consistent health signal.
 - Replace manual performance interpretation with persisted, auditable AI recommendations.
+- Improve the measures the CMO is evaluated on: marketing efficiency, attributed revenue, and retention of strategic brand investment.
 
 ## Domain owner: Influencer Marketing Operations
 
 - Serve current campaign and creator data to brand portals through Lakebase-backed APIs.
 - Observe event-to-API propagation and measured latency.
 - Ask governed natural-language questions without writing SQL.
+- Improve the measures operations owns: time to insight, data-freshness SLA, recommendation adoption, and API reliability.
 
 ---
 
@@ -45,7 +47,7 @@ Today those answers require fragmented CRM, social, advertising, contract, and b
 
 → `Lakeflow Bronze / Silver / Gold / Platinum`
 
-→ `ai_gen campaign recommendations`
+→ `ai_gen + Foundation Model API recommendations`
 
 → `Lakebase synced operational tables`
 
@@ -55,15 +57,41 @@ Every downstream stage depends on the preceding successful stage in the deployed
 
 ---
 
+# Synthetic data that tells the story
+
+The executable generator in `src/data_gen/generate.py` creates correlated, reproducible source data—not independent random rows.
+
+- Creator tier determines follower bands from nano (`1K–10K`) through macro (`1M–5M`).
+- Campaign status changes spend behavior; account tier changes renewal ARR exposure.
+- Stripe includes paid, pending, and refunded transactions; contracts include active, expired, and terminated records.
+- Ordered CDC feeds include late updates, pauses, reviews, offboarding, and one campaign UPSERT.
+- `CR-00042` and `CMP-01337` contain a deliberate creator-campaign revenue surge that drives the ROI and action story.
+
+Actual governed profile after four refreshes:
+
+| Dataset | Rows |
+|---|---:|
+| TikTok metrics | 4,800,000 |
+| Stripe revenue | 401,380 |
+| Google Ads spend | 243,460 |
+| Creator CDC | 20,024 |
+| Campaign CDC | 8,005 |
+| Gold creator performance | 2,261,354 |
+
+The headline creator grew from **$5K in June to $402K in September**, with 97–99% of post-launch revenue tied to the headline campaign. Full logic and executed profiles are in `SYNTHETIC_DATA.md`.
+
+---
+
 # Live demonstration
 
 1. Generate synthetic source and CDC records.
 2. Run the serverless Lakeflow pipeline incrementally.
 3. Persist grounded campaign recommendations with `ai_gen`.
-4. Refresh Lakebase only after the analytical and AI stages succeed.
-5. Query the same served records through documented FastAPI endpoints.
-6. Push a synthetic change and watch Bronze → Platinum → Lakebase → API latency.
-7. Ask Genie for campaign ROI, renewal risk, AI actions, or API guidance.
+4. Call `databricks-claude-haiku-5-5` through the app's bound model-serving resource.
+5. Refresh Lakebase only after the analytical and AI stages succeed.
+6. Query the same served records through documented FastAPI endpoints.
+7. Push a synthetic change and watch Bronze → Platinum → Lakebase → API latency.
+8. Ask Genie for campaign ROI, renewal risk, AI actions, or API guidance.
 
 ---
 
@@ -71,6 +99,7 @@ Every downstream stage depends on the preceding successful stage in the deployed
 
 - Recommendations use only campaign name, spend, attributed revenue, and ROI.
 - Outputs are persisted in Unity Catalog with generation timestamp and function provenance.
+- `POST /v1/model-recommendation` calls a declared Foundation Model API resource with `CAN_QUERY` permission.
 - The app labels results “AI-generated — verify before acting.”
 - Genie is curated to governed tables and includes certified SQL examples.
 - Generated SQL and source tables remain inspectable.
@@ -82,7 +111,8 @@ Every downstream stage depends on the preceding successful stage in the deployed
 | Decision | Why | Trade-off |
 |---|---|---|
 | Serve the app from Lakebase | Sub-second operational reads without waking a warehouse | Requires governed lakehouse-to-Lakebase synchronization |
-| Persist `ai_gen` recommendations | Auditable, stable output; no LLM inference on page open | Refreshes per orchestration rather than continuously |
+| Persist `ai_gen` recommendations | Auditable, stable default; no LLM inference on page open | Refreshes per orchestration rather than continuously |
+| Expose a separate model endpoint route | Proves governed on-demand inference and supports interactive testing | Adds variable latency and token cost, so it is not used for page startup |
 | Curate Genie over UC tables | Natural language plus inspectable generated SQL | Genie analytical execution uses a SQL warehouse |
 | Use synthetic data | Safe, reproducible, shareable | Value estimates require production calibration |
 | Bundle every resource | Repeatable deployment and evidence | Some identity grants require a post-deploy helper |
@@ -91,10 +121,11 @@ Every downstream stage depends on the preceding successful stage in the deployed
 
 # AI as a force multiplier
 
-- Used an AI coding agent to review the starter, map rubric gaps, implement, deploy, diagnose failures, and generate evidence.
+- Used an AI coding agent to map rubric requirements, implement original code, deploy, diagnose failures, and capture evidence.
 - Prompt pattern: define the customer outcome, require an integrated stage-by-stage journey, and demand readable execution proof.
 - Used AI to challenge architecture claims with live tests: endpoint timing, pipeline states, Genie SQL, Lakebase synchronization, and app logs.
 - Used `ai_gen` as a product capability, with prompts constrained to governed campaign metrics and persisted outputs.
+- Verified a live Foundation Model API call and committed the exact request, response, model name, and token usage as text.
 - Preserved both build conversation IDs in `FE_BAR_SUBMISSION.md` for traceability.
 
 ---
@@ -120,7 +151,7 @@ The repository commits readable text proving:
 - Genie answers with generated SQL
 - Stage and end-to-end propagation latency
 
-See `evidence/` in the repository.
+Start with `EXECUTION_EVIDENCE.md`, `SYNTHETIC_DATA.md`, and `AI_GEN_RECOMMENDATIONS.sql` at the repository root; detailed supporting evidence remains under `evidence/`.
 
 ---
 
@@ -144,8 +175,9 @@ See `evidence/` in the repository.
 1. Start on the outcome and Lakebase-served KPIs.
 2. Push one synthetic campaign change and narrate the integrated stage tracker.
 3. Open AI Recommendations and explain that output is persisted, governed, and served from Lakebase.
-4. Ask Genie which campaign has the highest ROI, then inspect generated SQL.
-5. Ask which API exposes renewal risk, then show the executable API script.
+4. Call the model-recommendation route and show the returned endpoint name, recommendation, and token usage.
+5. Ask Genie which campaign has the highest ROI, then inspect generated SQL.
+6. Ask which API exposes renewal risk, then show the executable API script.
 
 ## Tell (30 seconds)
 
@@ -159,7 +191,7 @@ See `evidence/` in the repository.
 No. It is an explicit planning estimate: 2% of a $10M spend base. Production calibration would replace the assumption with observed reallocation and incremental-revenue outcomes.
 
 **Business stakeholder:** “Why should I trust the recommendation?”  
-It is grounded only in governed spend, attributed revenue, and ROI; persisted with timestamps; labeled AI-generated; and designed for human approval.
+It is grounded only in governed spend, attributed revenue, and ROI; persisted with timestamps; labeled AI-generated; and designed for human approval. The repository also includes the exact model request and real returned output.
 
 **Technical stakeholder:** “Why not query the warehouse from the app?”  
 Lakebase gives predictable operational latency and isolates customer-facing traffic from analytical compute. Warehouses remain appropriate for Genie and batch intelligence.
