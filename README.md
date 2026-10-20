@@ -6,6 +6,7 @@
 - Orchestrated AI job: [`src/jobs/generate_ai_insights.py`](src/jobs/generate_ai_insights.py)
 - Executable model-serving call: [`MODEL_ENDPOINT_RECOMMENDATION.py`](MODEL_ENDPOINT_RECOMMENDATION.py)
 - Actual text run output: [`EXECUTION_EVIDENCE.md`](EXECUTION_EVIDENCE.md)
+- Synthetic data logic, correlations, volumes, and executed profiles: [`SYNTHETIC_DATA.md`](SYNTHETIC_DATA.md)
 - Full FE Bar requirement map: [`FE_BAR_SUBMISSION.md`](FE_BAR_SUBMISSION.md)
 - Business presentation: [`presentation/traackr_fe_bar_deck.md`](presentation/traackr_fe_bar_deck.md)
 
@@ -20,7 +21,7 @@ Production-shape Databricks Asset Bundle that deploys, in one `databricks bundle
 - A Lakebase (managed Postgres) instance and database
 - 3 synced tables that mirror Platinum into Lakebase in TRIGGERED mode
 - 2 Lakeflow Jobs: one-time setup and day-2 orchestration
-- A customer-facing FastAPI on Databricks Apps with a built-in developer portal (docs, Try-it, key management, architecture diagram, bundle source viewer, and a Live Change Propagation tab that proves end-to-end freshness)
+- A customer-facing FastAPI on Databricks Apps with a built-in developer portal (docs, Try-it, key management, architecture diagram, and a Live Change Propagation tab that proves end-to-end freshness)
 
 The bundle is workspace-portable. Configure 5 variables, run a handful of commands, and the whole stack lands in your workspace.
 

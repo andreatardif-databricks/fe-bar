@@ -38,6 +38,7 @@ The day-2 job encodes the dependency chain. GenAI runs only after Lakeflow succe
 - Consolidated real output: `EXECUTION_EVIDENCE.md`
 - Executable AI generation: `AI_GEN_RECOMMENDATIONS.sql` and `src/jobs/generate_ai_insights.py`
 - Executable model endpoint call: `MODEL_ENDPOINT_RECOMMENDATION.py` and `POST /v1/model-recommendation`
+- Synthetic generator and actual data profile: `src/data_gen/generate.py` and `SYNTHETIC_DATA.md`
 - Readable execution evidence: `evidence/`
 - Business presentation: `presentation/traackr_fe_bar_deck.md`
 - Prior build conversation: `01a11d83-260a-7802-9307-20ca1bffeba5`

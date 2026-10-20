@@ -1181,7 +1181,7 @@
     if (!isRoot) {
       el.className = 'tree-dir';
       // Open the SDP source folders by default for discoverability
-      const openByDefault = ['src', 'app', 'specifications'].includes(node.name);
+      const openByDefault = ['src', 'app'].includes(node.name);
       if (openByDefault) el.open = true;
       const summary = document.createElement('summary');
       summary.innerHTML = `<span class="tree-icon">📁</span><span class="tree-name">${escapeHtml(node.name)}</span>`;

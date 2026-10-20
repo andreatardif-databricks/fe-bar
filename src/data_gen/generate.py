@@ -1,7 +1,6 @@
 # Databricks notebook source
 """
-Synthetic data generator for the Traackr Influencer Revenue Pipeline demo.
-See PROJECT/specifications/01-lakeflow.md (Section A) for the contract.
+Synthetic data generator for the Traackr Influencer Revenue Pipeline.
 
 Outputs parquet under:
   /Volumes/ai_demo_gen/dev_andrea_tardif_demo_influencer_revenue_pipeline_modernized/raw_data/<source>/

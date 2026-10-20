@@ -15,7 +15,6 @@ mkdir -p "$DEST"
 # Deliberately excluded:
 #   DEPLOYMENT.md   - internal handover notes from the demo deploy
 #   architecture.md - data is rendered live in the Architecture tab
-#   specifications/ - design notes used during demo construction
 for f in README.md dab_instructions.md databricks.yml resources.json; do
   if [ -f "$ROOT/$f" ]; then
     cp "$ROOT/$f" "$DEST/"
@@ -33,8 +32,6 @@ rsync -a \
   --exclude='_bundle_source' \
   --exclude='.DS_Store' \
   "$ROOT/app/" "$DEST/app/"
-
-# (specifications/ intentionally not included; see filter above)
 
 # Helper scripts
 if [ -d "$ROOT/scripts" ]; then

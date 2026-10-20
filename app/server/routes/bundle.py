@@ -2,7 +2,7 @@
 Bundle-source viewer.
 
 Serves a read-only snapshot of the Databricks Asset Bundle (databricks.yml,
-README, src/, app/, specifications/) so a customer can browse exactly how the
+README, src/, and app/) so a customer can browse exactly how the
 pipeline and Lakebase instance are deployed. Auth is OBO (Databricks Apps
 front-door SSO), matching the other admin routes.
 
