@@ -1,0 +1,58 @@
+# Databricks notebook source
+"""Compare source-vs-Lakebase max(updated_at) for the 3 mirror tables. Fail if delta > 5 min."""
+import os
+import time
+from datetime import datetime, timezone, timedelta
+from databricks.sdk import WorkspaceClient
+import psycopg
+
+CATALOG = "at_10526_workspace"
+SCHEMA = "influencer_engagement_fe_bar"
+WAREHOUSE_ID = "70662a24f8050a48"
+INSTANCE = "influencer-fe-bar-lb"
+DB = "influencer_fe_bar"
+
+PAIRS = [
+    ("platinum_creator_360",  "synced_creators"),
+    ("platinum_campaign_360", "synced_campaigns"),
+    ("platinum_brand_360",    "synced_brands"),
+]
+
+w = WorkspaceClient()
+inst = w.database.get_database_instance(name=INSTANCE)
+host = inst.read_write_dns
+user = w.current_user.me().user_name
+token = w.database.generate_database_credential(
+    request_id=f"freshness-{int(time.time())}",
+    instance_names=[INSTANCE],
+).token
+conn_str = f"host={host} dbname={DB} user={user} password={token} sslmode=require"
+
+bad = []
+with psycopg.connect(conn_str) as conn:
+    with conn.cursor() as cur:
+        for src, tgt in PAIRS:
+            res = w.statement_execution.execute_statement(
+                warehouse_id=WAREHOUSE_ID,
+                statement=f"SELECT CAST(MAX(updated_at) AS STRING) FROM {CATALOG}.{SCHEMA}.{src}",
+                wait_timeout="20s",
+            )
+            src_max_str = res.result.data_array[0][0] if res.result and res.result.data_array else None
+            cur.execute(f"SELECT MAX(updated_at) FROM {SCHEMA}.{tgt}")
+            tgt_max = cur.fetchone()[0]
+            try:
+                src_dt = datetime.fromisoformat(src_max_str.replace("Z", "+00:00")) if src_max_str else None
+                if src_dt and src_dt.tzinfo is None:
+                    src_dt = src_dt.replace(tzinfo=timezone.utc)
+                if tgt_max and tgt_max.tzinfo is None:
+                    tgt_max = tgt_max.replace(tzinfo=timezone.utc)
+                lag_s = int((src_dt - tgt_max).total_seconds()) if src_dt and tgt_max else None
+            except Exception:
+                lag_s = None
+            print(f"{tgt}: source={src_max_str} lakebase={tgt_max} lag={lag_s}s")
+            if lag_s is None or lag_s > 300:
+                bad.append((tgt, lag_s))
+
+if bad:
+    raise RuntimeError(f"Freshness check failed: {bad}")
+print("All 3 mirrors within 5 min freshness SLA.")

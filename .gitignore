@@ -1,0 +1,11 @@
+.DS_Store
+.databricks/
+.claude/
+.vscode/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+node_modules/
+dist/
+build/

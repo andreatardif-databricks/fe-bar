@@ -1,0 +1,192 @@
+"""Admin endpoints — list / create / toggle API keys. Used by the playground UI."""
+import re
+import secrets
+from datetime import datetime, timezone
+from typing import Optional, Literal
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from .. import db
+from ..auth import require_obo
+
+router = APIRouter(prefix="/v1/admin", tags=["admin"])
+
+Scope = Literal["all", "brand_name", "account_id"]
+
+
+@router.get("/api-keys")
+def list_keys(_=Depends(require_obo)):
+    rows = db.fetch_all(
+        """
+        SELECT k.api_key, k.brand_id, k.brand_scope, k.label, k.is_active,
+               k.rate_limit_per_min, k.created_at, k.expires_at,
+               k.last_used_at, k.use_count
+        FROM public.api_keys k
+        ORDER BY k.brand_scope DESC, k.brand_id NULLS FIRST, k.api_key
+        """
+    )
+    # Decorate each key with the matching account_ids so the UI can show them.
+    name_groups = _brand_name_groups()
+    for r in rows:
+        if r["brand_scope"] == "all":
+            r["accounts"] = []
+            r["display_brand"] = "★ All brands"
+        elif r["brand_scope"] == "brand_name":
+            accs = name_groups.get(r["brand_id"], [])
+            r["accounts"] = accs
+            r["display_brand"] = r["brand_id"]
+        else:  # account_id
+            row = db.fetch_one(f"SELECT brand_name FROM {db.SYNCED_SCHEMA}.synced_brands WHERE account_id = %s", (r["brand_id"],))
+            r["accounts"] = [{"account_id": r["brand_id"], "brand_name": (row or {}).get("brand_name")}]
+            r["display_brand"] = f"{(row or {}).get('brand_name') or r['brand_id']} ({r['brand_id']})"
+    return {"keys": rows}
+
+
+def _brand_name_groups() -> dict[str, list[dict]]:
+    """Cache helper: brand_name -> [{account_id, brand_name, tier, country}, ...]."""
+    rows = db.fetch_all(
+        f"SELECT account_id, brand_name, tier, country FROM {db.SYNCED_SCHEMA}.synced_brands WHERE brand_name IS NOT NULL"
+    )
+    groups: dict[str, list[dict]] = {}
+    for r in rows:
+        groups.setdefault(r["brand_name"], []).append(r)
+    return groups
+
+
+@router.get("/brands")
+def list_brands(_=Depends(require_obo)):
+    """Return unique brand_names with their account_ids (collapsing duplicates from the synthetic data)."""
+    groups = _brand_name_groups()
+    out = []
+    for name in sorted(groups.keys(), key=str.lower):
+        accs = groups[name]
+        out.append({
+            "brand_name": name,
+            "account_count": len(accs),
+            "account_ids": [a["account_id"] for a in accs],
+            "accounts": accs,
+        })
+    return {"brands": out}
+
+
+@router.get("/overview")
+def overview(_=Depends(require_obo)):
+    """Fast startup KPIs sourced only from Lakebase operational tables."""
+    counts = db.fetch_one(
+        f"""
+        SELECT
+          (SELECT COUNT(*) FROM {db.SYNCED_SCHEMA}.synced_brands) AS brands,
+          (SELECT COUNT(*) FROM {db.SYNCED_SCHEMA}.synced_campaigns) AS campaigns,
+          (SELECT COUNT(*) FROM {db.SYNCED_SCHEMA}.synced_creators) AS creators
+        """
+    )
+    return {
+        "source": "lakebase",
+        "brands": int(counts["brands"]),
+        "campaigns": int(counts["campaigns"]),
+        "creators": int(counts["creators"]),
+    }
+
+
+class ToggleBody(BaseModel):
+    is_active: bool
+
+
+@router.patch("/api-keys/{api_key}")
+def toggle_key(api_key: str, body: ToggleBody, _=Depends(require_obo)):
+    row = db.fetch_one("SELECT api_key FROM public.api_keys WHERE api_key = %s", (api_key,))
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Key not found")
+    with db.get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE public.api_keys SET is_active = %s WHERE api_key = %s",
+                (body.is_active, api_key),
+            )
+    return {"api_key": api_key, "is_active": body.is_active}
+
+
+class CreateBody(BaseModel):
+    brand_scope: Scope = "brand_name"
+    brand_id: Optional[str] = Field(default=None, description="Required unless brand_scope='all'")
+    label: str = Field(..., min_length=1, max_length=200)
+    api_key: Optional[str] = Field(default=None, max_length=128)
+    rate_limit_per_min: int = Field(default=60, ge=1, le=10000)
+    expires_at: Optional[datetime] = None
+    is_active: bool = True
+
+
+_KEY_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
+
+
+def _slug(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())[:24] or "brand"
+
+
+@router.post("/api-keys", status_code=status.HTTP_201_CREATED)
+def create_key(body: CreateBody, _=Depends(require_obo)):
+    # Validate brand_id against the requested scope.
+    accounts: list[dict] = []
+    label_for_slug = "all"
+    if body.brand_scope == "all":
+        stored_brand = "*"
+    elif body.brand_scope == "brand_name":
+        if not body.brand_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "brand_id (brand_name) is required for scope='brand_name'")
+        accs = db.fetch_all(
+            f"SELECT account_id, brand_name, tier, country FROM {db.SYNCED_SCHEMA}.synced_brands WHERE brand_name = %s",
+            (body.brand_id,),
+        )
+        if not accs:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown brand_name: {body.brand_id}")
+        accounts = accs
+        stored_brand = body.brand_id
+        label_for_slug = body.brand_id
+    elif body.brand_scope == "account_id":
+        if not body.brand_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "brand_id is required for scope='account_id'")
+        row = db.fetch_one(f"SELECT account_id, brand_name FROM {db.SYNCED_SCHEMA}.synced_brands WHERE account_id = %s", (body.brand_id,))
+        if not row:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown account_id: {body.brand_id}")
+        accounts = [row]
+        stored_brand = body.brand_id
+        label_for_slug = row["brand_name"] or body.brand_id
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Bad brand_scope: {body.brand_scope}")
+
+    api_key = (body.api_key or "").strip()
+    if not api_key:
+        api_key = f"pk_demo_{_slug(label_for_slug)}_{secrets.token_hex(4)}"
+    elif not _KEY_RE.match(api_key):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "api_key must match ^[A-Za-z0-9_-]{8,128}$")
+
+    if body.expires_at is not None:
+        exp = body.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp <= datetime.now(timezone.utc):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "expires_at must be in the future")
+    else:
+        exp = None
+
+    try:
+        with db.get_pool().connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO public.api_keys
+                      (api_key, brand_id, brand_scope, label, is_active, rate_limit_per_min, expires_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING api_key, brand_id, brand_scope, label, is_active, rate_limit_per_min, created_at, expires_at
+                    """,
+                    (api_key, stored_brand, body.brand_scope, body.label,
+                     body.is_active, body.rate_limit_per_min, exp),
+                )
+                row = cur.fetchone()
+    except Exception as e:
+        msg = str(e)
+        if "duplicate key" in msg or "unique" in msg.lower():
+            raise HTTPException(status.HTTP_409_CONFLICT, f"api_key '{api_key}' already exists")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, msg)
+
+    cols = ["api_key", "brand_id", "brand_scope", "label", "is_active", "rate_limit_per_min", "created_at", "expires_at"]
+    return {"key": dict(zip(cols, row)), "accounts": accounts}

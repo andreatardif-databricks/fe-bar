@@ -1,0 +1,49 @@
+# Databricks notebook source
+"""Create the 3 synced tables from Platinum into Lakebase Postgres via SDK."""
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.database import (
+    SyncedDatabaseTable,
+    SyncedTableSpec,
+    SyncedTableSchedulingPolicy,
+    NewPipelineSpec,
+)
+
+CATALOG = "ai_demo_gen"
+SCHEMA = "dev_andrea_tardif_demo_influencer_revenue_pipeline_modernized"
+LB_PROJECT = "pulsar-influence-lb"  # database instance name
+LB_DB = "dbgen_pulsar_influence"
+
+TABLES = [
+    ("platinum_creator_360", "creators", "creator_id", SyncedTableSchedulingPolicy.TRIGGERED),
+    ("platinum_campaign_360", "campaigns", "campaign_id", SyncedTableSchedulingPolicy.TRIGGERED),
+    ("platinum_brand_360", "brands", "account_id", SyncedTableSchedulingPolicy.SNAPSHOT),
+]
+
+w = WorkspaceClient()
+
+for src, tgt, pk, mode in TABLES:
+    src_full = f"{CATALOG}.{SCHEMA}.{src}"
+    synced_name = f"{CATALOG}.{SCHEMA}.synced_{tgt}"
+    print(f"\n=== {synced_name} ({mode.value}) ===")
+    try:
+        st = SyncedDatabaseTable(
+            name=synced_name,
+            database_instance_name=LB_PROJECT,
+            logical_database_name=LB_DB,
+            spec=SyncedTableSpec(
+                source_table_full_name=src_full,
+                primary_key_columns=[pk],
+                scheduling_policy=mode,
+                create_database_objects_if_missing=True,
+                new_pipeline_spec=NewPipelineSpec(
+                    storage_catalog=CATALOG,
+                    storage_schema=SCHEMA,
+                ),
+            ),
+        )
+        result = w.database.create_synced_database_table(synced_table=st)
+        print(f"  created: {result.name}")
+    except Exception as e:
+        print(f"  ERROR: {e}")
+
+print("\nDone.")

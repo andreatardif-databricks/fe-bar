@@ -1,0 +1,68 @@
+"""End-to-end freshness inspector — used by Maya's demo to prove pipeline lag."""
+import os
+import time
+from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
+from fastapi import APIRouter, Depends, HTTPException, status
+from databricks.sdk import WorkspaceClient
+from .. import db
+from ..auth import require_obo
+
+router = APIRouter(prefix="/v1", tags=["freshness"])
+
+CATALOG = os.environ.get("UC_CATALOG", "at_10526_workspace")
+SCHEMA = os.environ.get("UC_SCHEMA", "influencer_engagement_fe_bar")
+WAREHOUSE_ID = os.environ.get("WAREHOUSE_ID", "202b674cd44819fd")
+
+_LB_SCHEMA = db.SYNCED_SCHEMA
+TABLES = [
+    {"name": "creators",  "platinum": "platinum_creator_360",  "lakebase": f"{_LB_SCHEMA}.synced_creators"},
+    {"name": "campaigns", "platinum": "platinum_campaign_360", "lakebase": f"{_LB_SCHEMA}.synced_campaigns"},
+    {"name": "brands",    "platinum": "platinum_brand_360",    "lakebase": f"{_LB_SCHEMA}.synced_brands"},
+]
+
+
+def _source_max(platinum_table: str) -> str | None:
+    w = WorkspaceClient()
+    res = w.statement_execution.execute_statement(
+        warehouse_id=WAREHOUSE_ID,
+        statement=f"SELECT CAST(MAX(updated_at) AS STRING) FROM {CATALOG}.{SCHEMA}.{platinum_table}",
+        wait_timeout="20s",
+    )
+    da = (res.result.data_array if res.result else None) or [[None]]
+    return da[0][0] if da and da[0] else None
+
+
+def _lakebase_max(table: str) -> str | None:
+    row = db.fetch_one(f"SELECT MAX(updated_at) AS m FROM {table}")
+    return row["m"].isoformat() if row and row.get("m") else None
+
+
+@router.get("/freshness")
+def freshness(_=Depends(require_obo)):
+    out = []
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for t in TABLES:
+            f_src = ex.submit(_source_max, t["platinum"])
+            f_lb = ex.submit(_lakebase_max, t["lakebase"])
+            src = f_src.result()
+            lb = f_lb.result()
+            lag = None
+            try:
+                if src and lb:
+                    src_dt = datetime.fromisoformat(src.replace("Z", "+00:00"))
+                    lb_dt = datetime.fromisoformat(lb.replace("Z", "+00:00")) if isinstance(lb, str) else lb
+                    if src_dt.tzinfo is None:
+                        src_dt = src_dt.replace(tzinfo=timezone.utc)
+                    if lb_dt.tzinfo is None:
+                        lb_dt = lb_dt.replace(tzinfo=timezone.utc)
+                    lag = max(0, int((src_dt - lb_dt).total_seconds()))
+            except Exception:
+                lag = None
+            out.append({
+                "name": t["name"],
+                "source_max_updated_at": src,
+                "lakebase_max_updated_at": lb,
+                "lag_seconds": lag,
+            })
+    return {"checked_at": datetime.now(timezone.utc).isoformat(), "tables": out}

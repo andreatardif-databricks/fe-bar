@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "config": {
+    "sample_questions": [
+      {"id": "10000000000000000000000000000001", "question": ["Which campaigns have the highest ROI?"]},
+      {"id": "10000000000000000000000000000002", "question": ["What actions does AI recommend for our top campaigns?"]},
+      {"id": "10000000000000000000000000000003", "question": ["Which API endpoint shows renewal risk?"]}
+    ]
+  },
+  "data_sources": {
+    "tables": [
+      {"identifier": "at_10526_workspace.influencer_engagement_fe_bar.ai_campaign_insights"},
+      {"identifier": "at_10526_workspace.influencer_engagement_fe_bar.api_endpoint_catalog"},
+      {"identifier": "at_10526_workspace.influencer_engagement_fe_bar.gold_campaign_roi"},
+      {"identifier": "at_10526_workspace.influencer_engagement_fe_bar.gold_creator_performance_daily"},
+      {"identifier": "at_10526_workspace.influencer_engagement_fe_bar.platinum_brand_360"}
+    ]
+  },
+  "instructions": {
+    "example_question_sqls": [
+      {
+        "id": "20000000000000000000000000000001",
+        "question": ["Which campaigns have the highest ROI?"],
+        "sql": ["SELECT campaign_id, brand_name, name, ROUND(roi, 2) AS roi, ROUND(total_revenue_usd, 2) AS revenue_usd FROM at_10526_workspace.influencer_engagement_fe_bar.gold_campaign_roi WHERE total_spend_usd > 0 ORDER BY roi DESC LIMIT 10"]
+      },
+      {
+        "id": "20000000000000000000000000000002",
+        "question": ["Which API endpoint shows renewal risk?"],
+        "sql": ["SELECT method, path, purpose, authentication FROM at_10526_workspace.influencer_engagement_fe_bar.api_endpoint_catalog WHERE lower(purpose) LIKE '%renewal%'"]
+      }
+    ],
+    "text_instructions": [
+      {
+        "id": "30000000000000000000000000000001",
+        "content": ["You are the Traackr Influencer Revenue Agent for marketing leaders and API developers. Use gold_campaign_roi for campaign performance, gold_creator_performance_daily for creator performance, platinum_brand_360 for renewal KPIs, ai_campaign_insights for persisted AI recommendations, and api_endpoint_catalog for API questions. State the source table, show generated SQL, use USD for money, and never invent metrics that are not present."]
+      }
+    ]
+  }
+}

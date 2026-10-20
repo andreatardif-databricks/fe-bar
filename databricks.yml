@@ -1,0 +1,249 @@
+# Traackr — Influencer Revenue Pipeline (Databricks Asset Bundle)
+# Deploy:  databricks bundle deploy --var="catalog=<your_catalog>" --var="schema=<your_schema>" --var="warehouse_id=<your_warehouse_id>"
+# Run:     databricks bundle run pulsar_setup         # one-time: lakebase + synced tables + metric views
+#          databricks bundle run pulsar_orchestration # day-2: regen data + pipeline + sync + freshness
+#          databricks bundle run pulsar_app           # start the FastAPI app
+#
+# Note: the resource keys + default Lakebase / App names below retain their original
+# pulsar-* identifiers because they match the live deployed resources. When deploying
+# to a fresh workspace, override them via --var=lakebase_instance_name=... etc.
+
+bundle:
+  name: influencer-engagement-fe-bar
+
+sync:
+  include:
+    - "src/**"
+    - "app/**"
+
+variables:
+  catalog:
+    description: "Unity Catalog for demo resources"
+    default: "at_10526_workspace"
+  schema:
+    description: "Schema within the catalog"
+    default: "influencer_engagement_fe_bar"
+  warehouse_id:
+    description: "SQL Warehouse ID"
+    default: "70662a24f8050a48"
+  app_name:
+    description: "Databricks App name (must be unique per workspace)"
+    default: "influencer-fe-bar"
+  lakebase_instance_name:
+    description: "Lakebase Database Instance (legacy — required for synced tables)"
+    default: "influencer-fe-bar-lb"
+  lakebase_database_name:
+    description: "Postgres database inside the Lakebase instance"
+    default: "influencer_fe_bar"
+  genie_space_id:
+    description: "Curated Traackr Genie Agent ID"
+    default: "01f1cbfef7e81a1d8d9161f8fd8d65f6"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    presets:
+      name_prefix: ''
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/andrea.tardif@databricks.com/.bundle/${bundle.name}/${bundle.target}
+
+resources:
+  # ──────────────────────────────────────────────────────────────────────────
+  # UC INFRASTRUCTURE
+  # ──────────────────────────────────────────────────────────────────────────
+  schemas:
+    pulsar_schema:
+      name: ${var.schema}
+      catalog_name: ${var.catalog}
+      comment: "Pulsar Influence Co. demo — bronze→silver→gold→platinum + serving"
+
+  volumes:
+    raw_data:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      name: "raw_data"
+      volume_type: "MANAGED"
+      comment: "Synthetic source-system parquet drops (Salesforce, HubSpot, TikTok, Google Ads, Stripe)"
+    cdc_events:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      name: "cdc_events"
+      volume_type: "MANAGED"
+      comment: "Pulsar internal CDC stream (creators + campaigns)"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # SDP PIPELINE — 4 layers (bronze → silver → gold → platinum)
+  # Hardcoded volume paths in 01_bronze.sql match the default catalog/schema.
+  # Override catalog/schema via vars only if you also edit those paths.
+  # ──────────────────────────────────────────────────────────────────────────
+  pipelines:
+    pulsar_pipeline:
+      name: "[${bundle.target}] Pulsar Influence Pipeline"
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      libraries:
+        - file:
+            path: ./src/pipeline/01_bronze.sql
+        - file:
+            path: ./src/pipeline/02_silver.sql
+        - file:
+            path: ./src/pipeline/03_gold.sql
+        - file:
+            path: ./src/pipeline/04_platinum.sql
+      configuration:
+        demo.catalog: ${var.catalog}
+        demo.schema: ${var.schema}
+      serverless: true
+      continuous: false
+      channel: current
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOBS
+  # ──────────────────────────────────────────────────────────────────────────
+  jobs:
+    # One-time setup: provision Lakebase Database Instance + database, create
+    # 3 synced tables (mirrors of platinum_*), and install metric views.
+    # Lakebase Database Instance + synced_database_table aren't DAB-declarable,
+    # so they're created via SDK scripts here.
+    pulsar_setup:
+      name: "[${bundle.target}] Pulsar — One-Time Setup"
+      description: "Lakebase instance + 3 synced tables + 3 metric views (run once after first pipeline success)"
+
+      tasks:
+        - task_key: generate_demo_data
+          description: "Generate synthetic source and CDC data"
+          notebook_task:
+            notebook_path: ./src/data_gen/generate.py
+          environment_key: sdk_env
+
+        - task_key: setup_lakebase
+          description: "Create Lakebase Database Instance + logical database"
+          notebook_task:
+            notebook_path: ./src/deploy/setup_lakebase.py
+          environment_key: sdk_env
+
+        - task_key: run_pipeline_first
+          description: "First pipeline run so platinum tables exist before synced-table creation"
+          depends_on:
+            - task_key: generate_demo_data
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.pulsar_pipeline.id}
+
+        - task_key: create_synced_tables
+          description: "Reverse-ETL governed serving tables into Lakebase"
+          depends_on:
+            - task_key: setup_lakebase
+            - task_key: run_pipeline_first
+          notebook_task:
+            notebook_path: ./src/deploy/create_synced_tables.py
+          environment_key: sdk_env
+
+        - task_key: create_metric_views
+          description: "3 governed UC metric views over gold/platinum"
+          depends_on:
+            - task_key: run_pipeline_first
+          notebook_task:
+            notebook_path: ./src/deploy/create_metric_views.py
+          environment_key: sdk_env
+
+        - task_key: generate_ai_insights
+          description: "Persist governed GenAI recommendations and API documentation"
+          depends_on:
+            - task_key: run_pipeline_first
+          notebook_task:
+            notebook_path: ./src/jobs/generate_ai_insights.py
+          environment_key: sdk_env
+
+      environments:
+        - environment_key: sdk_env
+          spec:
+            client: "3"
+            dependencies:
+              - "psycopg[binary]==3.2.3"
+              - "databricks-sdk>=0.102.0"
+
+    # Day-2 orchestration: refresh synthetic data, run pipeline, trigger
+    # synced-table refresh, verify <5min freshness SLA.
+    pulsar_orchestration:
+      name: "[${bundle.target}] Pulsar — Daily Orchestration"
+      description: "generate → pipeline → trigger lakebase sync → freshness check"
+
+      tasks:
+        - task_key: generate_demo_data
+          notebook_task:
+            notebook_path: ./src/data_gen/generate.py
+          environment_key: data_env
+
+        - task_key: run_pipeline
+          depends_on:
+            - task_key: generate_demo_data
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.pulsar_pipeline.id}
+
+        - task_key: trigger_lakebase_sync
+          depends_on:
+            - task_key: run_pipeline
+            - task_key: generate_ai_insights
+          notebook_task:
+            notebook_path: ./src/jobs/trigger_lakebase_sync.py
+          environment_key: data_env
+
+        - task_key: generate_ai_insights
+          depends_on:
+            - task_key: run_pipeline
+          notebook_task:
+            notebook_path: ./src/jobs/generate_ai_insights.py
+          environment_key: data_env
+
+        - task_key: freshness_check
+          depends_on:
+            - task_key: trigger_lakebase_sync
+          notebook_task:
+            notebook_path: ./src/jobs/freshness_check.py
+          environment_key: data_env
+
+      environments:
+        - environment_key: data_env
+          spec:
+            client: "3"
+            dependencies:
+              - "psycopg[binary]==3.2.3"
+              - "faker==30.8.2"
+              - "databricks-sdk>=0.102.0"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # APP — customer-facing FastAPI (read-only)
+  # No `postgres` binding: the app uses a legacy Lakebase Database Instance
+  # (synced-tables prerequisite) which doesn't yet have a binding type. The
+  # app derives PGHOST/PGUSER + a fresh OAuth token via the SDK at startup
+  # using the SP identity (PG_INSTANCE_NAME env var). The SP must be GRANTed
+  # the Postgres role separately (see dab_instructions.md).
+  # ──────────────────────────────────────────────────────────────────────────
+  apps:
+    pulsar_app:
+      name: ${var.app_name}
+      description: "Pulsar Influence Co. — brand-client read API"
+      source_code_path: ./app
+      lifecycle:
+        prevent_destroy: true
+      user_api_scopes:
+        - dashboards.genie
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: lakebase
+          database:
+            database_name: ${var.lakebase_database_name}
+            instance_name: ${var.lakebase_instance_name}
+            permission: CAN_CONNECT_AND_CREATE
+        - name: genie-space
+          genie_space:
+            name: "Traackr Influencer Revenue Agent"
+            space_id: ${var.genie_space_id}
+            permission: CAN_RUN

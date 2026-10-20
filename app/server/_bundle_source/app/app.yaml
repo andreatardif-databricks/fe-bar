@@ -1,0 +1,25 @@
+command:
+  - "uvicorn"
+  - "server.main:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+env:
+  - name: TRAACKR_BRAND_KEY_PREFIX
+    value: "pk_demo_"
+  - name: WAREHOUSE_ID
+    valueFrom: sql-warehouse
+  # The three PG_* values below are the live-workspace deployed identifiers
+  # for the Lakebase Database Instance, its logical database, and the App.
+  # Override these in your own deploy via databricks.yml vars.
+  - name: PG_INSTANCE_NAME
+    value: "pulsar-influence-lb"
+  - name: PGDATABASE
+    value: "dbgen_pulsar_influence"
+  - name: PGAPPNAME
+    value: "pulsar-influence-api"
+  # Lakebase Postgres schema where the synced tables (synced_brands/campaigns/creators) live.
+  # The app reads these tables directly (no public.* view indirection).
+  - name: UC_SCHEMA
+    value: "dev_andrea_tardif_demo_influencer_revenue_pipeline_modernized"
