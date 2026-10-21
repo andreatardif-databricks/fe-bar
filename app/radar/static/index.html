@@ -65,8 +65,9 @@
         <div class="ask"><input id="q" placeholder="Ask a question..." value="Which API endpoint shows renewal risk?"><button id="askbtn" class="primary">Ask</button></div>
         <div id="answer"></div>
       </div>
-      <div class="panel flush">
+      <div class="panel flush" id="histpanel">
         <h2 class="pad">Questions asked <span class="note" id="histcount"></span></h2>
+        <p class="note pad" id="histnote" hidden>The question log is visible to portfolio operators only, so one brand cannot see what others asked.</p>
         <table id="history"><thead><tr><th>When</th><th>Asked by</th><th>Question</th><th>Type</th><th class="n">ms</th><th>Result</th></tr></thead><tbody></tbody></table>
       </div>
     </section>

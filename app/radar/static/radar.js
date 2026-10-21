@@ -110,6 +110,11 @@ async function actions() {
 
 async function history() {
   const body = $("#history tbody");
+  const operator = isPortfolio();
+  $("#history").hidden = !operator;
+  $("#histnote").hidden = operator;
+  $("#histcount").textContent = "";
+  if (!operator) return;
   try {
     const rows = await api("/v1/genie/history?limit=30");
     $("#histcount").textContent = `(${rows.length} most recent)`;
@@ -137,6 +142,11 @@ $("#askbtn").addEventListener("click", async () => {
 
 async function pipeline() {
   const run = $("#run"), body = $("#reqs tbody");
+  if (!isPortfolio()) {
+    run.innerHTML = '<p class="note">Run timings and the request log are visible to portfolio operators only.</p>';
+    body.innerHTML = "";
+    return;
+  }
   try {
     const r = await api("/v1/pipeline/last-run");
     run.innerHTML = `<p class="note">Run <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.run_id)}</a>: <span class="tag ${r.result === "SUCCESS" ? "ok" : "bad"}">${esc(r.result)}</span> ${r.total_seconds}s end to end</p>
