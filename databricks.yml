@@ -4,9 +4,8 @@
 #          databricks bundle run pulsar_orchestration # day-2: regen data + pipeline + sync + freshness
 #          databricks bundle run pulsar_app           # start the FastAPI app
 #
-# Note: the resource keys + default Lakebase / App names below retain their original
-# pulsar-* identifiers because they match the live deployed resources. When deploying
-# to a fresh workspace, override them via --var=lakebase_instance_name=... etc.
+# Note: the default Lakebase project/branch/database IDs match the live autoscaling
+# resources. Override them when deploying to another workspace.
 
 bundle:
   name: influencer-engagement-fe-bar
@@ -29,9 +28,15 @@ variables:
   app_name:
     description: "Databricks App name (must be unique per workspace)"
     default: "influencer-fe-bar"
-  lakebase_instance_name:
-    description: "Lakebase Database Instance (legacy — required for synced tables)"
+  lakebase_project_id:
+    description: "Lakebase Autoscaling project ID"
     default: "influencer-fe-bar-lb"
+  lakebase_branch_id:
+    description: "Lakebase Autoscaling branch ID"
+    default: "production"
+  lakebase_database_id:
+    description: "Lakebase Autoscaling database resource ID"
+    default: "db-ri09-9dhl132wxg"
   lakebase_database_name:
     description: "Postgres database inside the Lakebase instance"
     default: "influencer_fe_bar"
@@ -105,13 +110,11 @@ resources:
   # JOBS
   # ──────────────────────────────────────────────────────────────────────────
   jobs:
-    # One-time setup: provision Lakebase Database Instance + database, create
-    # 3 synced tables (mirrors of platinum_*), and install metric views.
-    # Lakebase Database Instance + synced_database_table aren't DAB-declarable,
-    # so they're created via SDK scripts here.
+    # One-time setup: verify the autoscaling Lakebase project/database, create
+    # serving synced tables, and install metric views.
     pulsar_setup:
       name: "[${bundle.target}] Pulsar — One-Time Setup"
-      description: "Lakebase instance + 3 synced tables + 3 metric views (run once after first pipeline success)"
+      description: "Lakebase Autoscaling project + synced tables + metric views"
 
       tasks:
         - task_key: generate_demo_data
@@ -121,7 +124,7 @@ resources:
           environment_key: sdk_env
 
         - task_key: setup_lakebase
-          description: "Create Lakebase Database Instance + logical database"
+          description: "Verify Lakebase Autoscaling production branch and database"
           notebook_task:
             notebook_path: ./src/deploy/setup_lakebase.py
           environment_key: sdk_env
@@ -228,12 +231,7 @@ resources:
               - "databricks-sdk>=0.102.0"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # APP — customer-facing FastAPI (read-only)
-  # No `postgres` binding: the app uses a legacy Lakebase Database Instance
-  # (synced-tables prerequisite) which doesn't yet have a binding type. The
-  # app derives PGHOST/PGUSER + a fresh OAuth token via the SDK at startup
-  # using the SP identity (PG_INSTANCE_NAME env var). The SP must be GRANTed
-  # the Postgres role separately (see dab_instructions.md).
+  # APP — customer-facing FastAPI bound directly to Lakebase Autoscaling.
   # ──────────────────────────────────────────────────────────────────────────
   apps:
     pulsar_app:
@@ -250,9 +248,9 @@ resources:
             id: ${var.warehouse_id}
             permission: CAN_USE
         - name: lakebase
-          database:
-            database_name: ${var.lakebase_database_name}
-            instance_name: ${var.lakebase_instance_name}
+          postgres:
+            branch: projects/${var.lakebase_project_id}/branches/${var.lakebase_branch_id}
+            database: projects/${var.lakebase_project_id}/branches/${var.lakebase_branch_id}/databases/${var.lakebase_database_id}
             permission: CAN_CONNECT_AND_CREATE
         - name: genie-space
           genie_space:

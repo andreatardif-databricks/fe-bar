@@ -56,7 +56,7 @@ The bundle is workspace-portable. Configure 5 variables, run a handful of comman
 |---|---|---|
 | UC infrastructure | catalog (pre-existing), schema, 2 volumes (`raw_data`, `cdc_events`) | `databricks.yml` |
 | SDP pipeline | Bronze streaming tables, Silver/Gold materialized views, Platinum AUTO CDC streaming tables | `src/pipeline/01-04_*.sql` |
-| Lakebase | Database Instance + logical database, 3 synced tables, 3 metric views | `src/deploy/*.py` |
+| Lakebase | Autoscaling project + production branch, 4 synced tables, 3 metric views | `src/deploy/*.py` |
 | Orchestration | `pulsar_setup` (one-time), `pulsar_orchestration` (day-2) | `databricks.yml` jobs block + `src/jobs/*.py` |
 | App | FastAPI brand-client API + developer portal (incl. Live Change Propagation) | `app/**` |
 
@@ -68,7 +68,7 @@ The bundle is workspace-portable. Configure 5 variables, run a handful of comman
 |---|---|
 | Databricks workspace | Unity Catalog enabled, AWS or Azure |
 | Databricks CLI | v0.220+ (`databricks --version`) |
-| Workspace permissions | Workspace admin (you will create a catalog, a Lakebase instance, a Databricks App, and several pipelines/jobs) |
+| Workspace permissions | Workspace admin (you will attach an autoscaling Lakebase project, a Databricks App, and several pipelines/jobs) |
 | Serverless SQL warehouse | Used for metric-view creation and the freshness/propagation status checks |
 | Python | 3.11+ locally for the snapshot script |
 
@@ -84,8 +84,10 @@ All variables live in the top of `databricks.yml`. Either edit defaults or pass 
 | `schema` | UC schema. Dev mode auto-prefixes (`dev_<user>_<schema>`). | `influencer_pipeline` |
 | `warehouse_id` | Serverless SQL warehouse the deploy + admin paths talk to. | `1234567890abcdef` |
 | `app_name` | Databricks App name (unique per workspace). | `traackr-influencer-api` |
-| `lakebase_instance_name` | Lakebase Database Instance (legacy type; required for synced tables). | `traackr-lb` |
-| `lakebase_database_name` | Postgres database inside the instance. | `traackr_influencer` |
+| `lakebase_project_id` | Lakebase Autoscaling project ID. | `influencer-fe-bar-lb` |
+| `lakebase_branch_id` | Autoscaling branch used by the app. | `production` |
+| `lakebase_database_id` | Database resource ID on the branch. | `db-ri09-9dhl132wxg` |
+| `lakebase_database_name` | PostgreSQL database name. | `influencer_fe_bar` |
 
 After editing `databricks.yml`, also update the hardcoded `/Volumes/<catalog>/<schema>/...` paths in:
 
@@ -97,7 +99,7 @@ After editing `databricks.yml`, also update the hardcoded `/Volumes/<catalog>/<s
 - `src/metric_views/create_metric_views.py`
 - `app/server/routes/freshness.py` (`SCHEMA`, `WAREHOUSE_ID`)
 - `app/server/routes/propagation.py` (`SCHEMA`, `WAREHOUSE_ID`, plus the 3 pipeline IDs that Databricks generates on first deploy)
-- `app/server/static/app.js` (`PROP_WS.host`, `PROP_WS.orgId`, `PROP_WS.sdpPipelineId`, `PROP_WS.syncPipelineId.{creator,campaign}`, `PROP_WS.lakebaseInstance`, `PROP_WS.lakebaseDatabase`) — these power the per-stage links in the Live Change Propagation tab
+- `app/server/static/app.js` (`PROP_WS.host`, `PROP_WS.orgId`, `PROP_WS.sdpPipelineId`, `PROP_WS.syncPipelineId.{creator,campaign}`, `PROP_WS.lakebaseProject`, `PROP_WS.lakebaseBranch`, `PROP_WS.lakebaseDatabase`) — these power the per-stage links in the Live Change Propagation tab
 
 The hardcoding is intentional for demo readability. For a long-lived deployment, refactor to read these from a single config block.
 
@@ -121,27 +123,21 @@ databricks bundle deploy
 # 3. Populate source volumes FIRST (otherwise Bronze has nothing to read)
 databricks bundle run pulsar_orchestration --only generate_demo_data
 
-# 4. One-time setup: create the Lakebase instance, run the SDP pipeline once,
-#    create the 3 synced tables, install the 3 metric views.
+# 4. One-time setup: verify the Lakebase Autoscaling project, run the SDP
+#    pipeline once, create the 4 synced tables, and install the metric views.
 databricks bundle run pulsar_setup
 ```
 
-At this point, the pipeline + Lakebase are live but the **app** still needs Postgres + Lakebase permissions on its service principal. The next two steps grant those.
+The app resource binds directly to the autoscaling `production` branch and injects `PGHOST`, `PGUSER`, `PGDATABASE`, and `LAKEBASE_ENDPOINT`.
 
 ```bash
-# 5. Grant the app SP CAN_USE on the Lakebase instance, and federate a Postgres
-#    role for it inside the database.
+# 5. Deploy the app so the autoscaling binding creates its OAuth Postgres role.
 
 APP_SP=$(databricks apps get traackr-influencer-api --output json | jq -r '.service_principal_client_id')
 
-# 5a. CAN_USE on the Lakebase instance
-databricks api patch /api/2.0/permissions/database-instances/traackr-lb \
-  --json "{\"access_control_list\":[{\"service_principal_name\":\"$APP_SP\",\"permission_level\":\"CAN_USE\"}]}"
-
-# 5b. Federate a Postgres role for the SP, grant USAGE/SELECT on schemas and views.
-#     Connect as workspace admin (psql / your tool of choice) and run:
+# 5a. Grant least-privilege table access after the role exists.
+#     Connect through `databricks psql --autoscaling --project influencer-fe-bar-lb`:
 #
-#     SELECT databricks_create_role('<sp-uuid>', 'SERVICE_PRINCIPAL');
 #     GRANT USAGE ON SCHEMA public TO "<sp-uuid>";
 #     GRANT USAGE ON SCHEMA "<prefixed-schema>" TO "<sp-uuid>";
 #     GRANT SELECT ON ALL TABLES IN SCHEMA "<prefixed-schema>" TO "<sp-uuid>";
@@ -299,7 +295,7 @@ databricks bundle run pulsar_app
 ```bash
 databricks bundle destroy --auto-approve
 # Manual steps the destroy does not cover:
-databricks database delete-database-instance <lakebase_instance_name>
+databricks postgres delete-project projects/<lakebase_project_id>
 databricks apps delete <app_name>
 # (the App has prevent_destroy: true; the Lakebase instance is not bundle-managed)
 ```

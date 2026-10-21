@@ -12,8 +12,8 @@ TABLES = ["synced_creators", "synced_campaigns", "synced_brands", "synced_ai_ins
 print("Triggering refresh on synced tables...")
 for t in TABLES:
     name = f"{CATALOG}.{SCHEMA}.{t}"
-    st = w.database.get_synced_database_table(name=name)
-    pipeline_id = st.data_synchronization_status.pipeline_id if st.data_synchronization_status else None
+    st = w.postgres.get_synced_table(name=f"synced_tables/{name}")
+    pipeline_id = st.status.pipeline_id if st.status else None
     if pipeline_id:
         try:
             w.pipelines.start_update(pipeline_id=pipeline_id, full_refresh=False)
@@ -29,8 +29,8 @@ for _ in range(60):
     states = []
     for t in TABLES:
         name = f"{CATALOG}.{SCHEMA}.{t}"
-        st = w.database.get_synced_database_table(name=name)
-        s = st.data_synchronization_status
+        st = w.postgres.get_synced_table(name=f"synced_tables/{name}")
+        s = st.status
         ds = (s.detailed_state.value if s and s.detailed_state else "?")
         states.append(f"{t}={ds}")
         if "ONLINE_NO_PENDING_UPDATE" not in ds:

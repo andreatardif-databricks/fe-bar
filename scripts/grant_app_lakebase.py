@@ -1,6 +1,5 @@
-"""Federate the current Databricks App identity into legacy Lakebase."""
+"""Grant the Databricks App identity access to Lakebase Autoscaling tables."""
 import argparse
-import time
 import psycopg
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
@@ -8,7 +7,7 @@ from databricks.sdk.core import Config
 parser = argparse.ArgumentParser()
 parser.add_argument("--profile", required=True)
 parser.add_argument("--app", default="influencer-fe-bar")
-parser.add_argument("--instance", default="influencer-fe-bar-lb")
+parser.add_argument("--endpoint", default="projects/influencer-fe-bar-lb/branches/production/endpoints/primary")
 parser.add_argument("--database", default="influencer_fe_bar")
 parser.add_argument("--schema", default="influencer_engagement_fe_bar")
 args = parser.parse_args()
@@ -16,15 +15,12 @@ args = parser.parse_args()
 workspace = WorkspaceClient(config=Config(profile=args.profile))
 app = workspace.apps.get(args.app)
 principal = app.service_principal_client_id
-instance = workspace.database.get_database_instance(name=args.instance)
-credential = workspace.database.generate_database_credential(
-    request_id=f"grant-fe-bar-app-{int(time.time())}",
-    instance_names=[args.instance],
-)
+endpoint = workspace.postgres.get_endpoint(name=args.endpoint)
+credential = workspace.postgres.generate_database_credential(endpoint=args.endpoint)
 admin_user = workspace.current_user.me().user_name
 
 connection = psycopg.connect(
-    host=instance.read_write_dns,
+    host=endpoint.status.hosts.host,
     dbname=args.database,
     user=admin_user,
     password=credential.token,
@@ -34,10 +30,8 @@ connection = psycopg.connect(
 with connection, connection.cursor() as cursor:
     cursor.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (principal,))
     if cursor.fetchone() is None:
-        cursor.execute("SELECT databricks_create_role(%s, 'SERVICE_PRINCIPAL')", (principal,))
-        print(f"Created federated Lakebase role {principal}")
-    else:
-        print(f"Federated Lakebase role {principal} already exists")
+        raise RuntimeError("App service-principal role is missing; attach the autoscaling postgres app resource first")
+    print(f"Lakebase Autoscaling role {principal} exists")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS public.api_keys (

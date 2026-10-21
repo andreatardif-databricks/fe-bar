@@ -708,9 +708,8 @@
       campaign: '195d467e-82c9-4aba-b832-4d7f5b97ea45',
     },
     cdcVolumePath: 'at_10526_workspace/influencer_engagement_fe_bar/cdc_events',
-    // Lakebase legacy Database Instance: "instance" is the project, "database" is the
-    // logical-database (Lakebase autoscale's "branch" analogue).
-    lakebaseInstance: 'influencer-fe-bar-lb',
+    lakebaseProject: 'influencer-fe-bar-lb',
+    lakebaseBranch: 'production',
     lakebaseDatabase: 'influencer_fe_bar',
   };
   function sdpUpdateUrl(updateId) {
@@ -726,7 +725,7 @@
     return `${PROP_WS.host}/explore/data/volumes/${PROP_WS.cdcVolumePath}?o=${PROP_WS.orgId}`;
   }
   function lakebaseInstanceUrl() {
-    return `${PROP_WS.host}/compute/database-instances/${PROP_WS.lakebaseInstance}?o=${PROP_WS.orgId}`;
+    return `${PROP_WS.host}/lakebase/projects/${PROP_WS.lakebaseProject}?o=${PROP_WS.orgId}`;
   }
   function appEndpointUrl(entity, entityId) {
     // Navigate the user to the Try-it section instead of a raw fetch with auth.
@@ -1120,7 +1119,7 @@
     ]);
     setStageLinks('lakebase', [
       { href: lakebaseInstanceUrl(), label: 'Lakebase',
-        title: `Open the Lakebase instance ${PROP_WS.lakebaseInstance} (database: ${PROP_WS.lakebaseDatabase}). Navigate to schema dev_andrea_tardif_… > synced_${c.entity}s to see the row.` },
+        title: `Open autoscaling project ${PROP_WS.lakebaseProject}, branch ${PROP_WS.lakebaseBranch}, database ${PROP_WS.lakebaseDatabase}. Navigate to schema influencer_engagement_fe_bar > synced_${c.entity}s.` },
       { href: syncUpdateUrl(c.entity, c.sync_run_id), label: 'sync run',
         title: `Open the synced-${c.entity}s pipeline update` },
     ]);

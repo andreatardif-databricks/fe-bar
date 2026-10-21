@@ -16,7 +16,6 @@ import psycopg
 from psycopg_pool import ConnectionPool
 from databricks.sdk import WorkspaceClient
 
-INSTANCE_NAME = os.environ.get("PG_INSTANCE_NAME", "pulsar-influence-lb")
 # Postgres schema where the Lakebase synced tables (synced_brands/campaigns/creators) land.
 # Set by app.yaml; defaults to the live demo's dev-mode-prefixed schema name.
 SYNCED_SCHEMA = os.environ.get(
@@ -33,11 +32,11 @@ def _build_password() -> str:
     """Return the Postgres password — either PGPASSWORD env or a fresh Databricks OAuth token."""
     if os.environ.get("PGPASSWORD"):
         return os.environ["PGPASSWORD"]
+    endpoint = os.environ.get("LAKEBASE_ENDPOINT")
+    if not endpoint:
+        raise RuntimeError("LAKEBASE_ENDPOINT is required for Lakebase Autoscaling OAuth")
     w = WorkspaceClient()
-    cred = w.database.generate_database_credential(
-        request_id=f"traackr-api-{int(time.time())}",
-        instance_names=[INSTANCE_NAME],
-    )
+    cred = w.postgres.generate_database_credential(endpoint=endpoint)
     return cred.token
 
 
@@ -46,20 +45,14 @@ _resolved_user: Optional[str] = None
 
 
 def _resolve_host_user() -> tuple[str, str]:
-    """If PGHOST/PGUSER aren't injected (legacy Database Instance has no `postgres`
-    binding type yet), derive them via the SDK from PG_INSTANCE_NAME."""
+    """Read the host and app role injected by the autoscaling Postgres binding."""
     global _resolved_host, _resolved_user
     if _resolved_host and _resolved_user:
         return _resolved_host, _resolved_user
     host = os.environ.get("PGHOST")
     user = os.environ.get("PGUSER")
     if not host or not user:
-        w = WorkspaceClient()
-        if not host:
-            inst = w.database.get_database_instance(name=INSTANCE_NAME)
-            host = inst.read_write_dns
-        if not user:
-            user = w.current_user.me().user_name
+        raise RuntimeError("PGHOST and PGUSER must be injected by the Lakebase Autoscaling app resource")
     _resolved_host, _resolved_user = host, user
     return host, user
 

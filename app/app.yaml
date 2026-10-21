@@ -10,13 +10,8 @@ env:
     value: "pk_demo_"
   - name: WAREHOUSE_ID
     valueFrom: sql-warehouse
-  # The three PG_* values below are the live-workspace deployed identifiers
-  # for the Lakebase Database Instance, its logical database, and the App.
-  # Override these in your own deploy via databricks.yml vars.
-  - name: PG_INSTANCE_NAME
-    value: "influencer-fe-bar-lb"
-  - name: PGDATABASE
-    value: "influencer_fe_bar"
+  - name: LAKEBASE_ENDPOINT
+    valueFrom: lakebase
   - name: PGAPPNAME
     value: "influencer-fe-bar"
   # Lakebase Postgres schema where the synced tables (synced_brands/campaigns/creators) live.

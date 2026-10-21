@@ -84,6 +84,30 @@ The record above is persisted in `at_10526_workspace.influencer_engagement_fe_ba
 
 The OTEL record is persisted in `at_10526_workspace.influencer_engagement_fe_bar.app_otel_logs`. Evidence queries used warehouse `70662a24f8050a48`.
 
+## Lakebase Autoscaling Migration
+
+The deployed app resource returned:
+
+```json
+{
+  "name":"lakebase",
+  "postgres":{
+    "branch":"projects/influencer-fe-bar-lb/branches/production",
+    "database":"projects/influencer-fe-bar-lb/branches/production/databases/db-ri09-9dhl132wxg",
+    "permission":"CAN_CONNECT_AND_CREATE"
+  }
+}
+```
+
+Runtime verification:
+
+```text
+Autoscaling sync refresh run_id=1087702704748778 TERMINATED SUCCESS
+Autoscaling setup verification run_id=459918942110182 TERMINATED SUCCESS
+Autoscaling synced-table verification run_id=540185051829139 TERMINATED SUCCESS
+GET /v1/brands/ACC-00001/renewal-health HTTP 200
+```
+
 ## Deployed Genie Answer
 
 ```json

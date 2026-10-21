@@ -1,7 +1,6 @@
 # Databricks notebook source
 """Compare source-vs-Lakebase max(updated_at) for the 3 mirror tables. Fail if delta > 5 min."""
 import os
-import time
 from datetime import datetime, timezone, timedelta
 from databricks.sdk import WorkspaceClient
 import psycopg
@@ -9,7 +8,7 @@ import psycopg
 CATALOG = "at_10526_workspace"
 SCHEMA = "influencer_engagement_fe_bar"
 WAREHOUSE_ID = "70662a24f8050a48"
-INSTANCE = "influencer-fe-bar-lb"
+ENDPOINT = "projects/influencer-fe-bar-lb/branches/production/endpoints/primary"
 DB = "influencer_fe_bar"
 
 PAIRS = [
@@ -19,13 +18,10 @@ PAIRS = [
 ]
 
 w = WorkspaceClient()
-inst = w.database.get_database_instance(name=INSTANCE)
-host = inst.read_write_dns
+endpoint = w.postgres.get_endpoint(name=ENDPOINT)
+host = endpoint.status.hosts.host
 user = w.current_user.me().user_name
-token = w.database.generate_database_credential(
-    request_id=f"freshness-{int(time.time())}",
-    instance_names=[INSTANCE],
-).token
+token = w.postgres.generate_database_credential(endpoint=ENDPOINT).token
 conn_str = f"host={host} dbname={DB} user={user} password={token} sslmode=require"
 
 bad = []

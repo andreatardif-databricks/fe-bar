@@ -49,7 +49,7 @@ Today those answers require fragmented CRM, social, advertising, contract, and b
 
 → `ai_gen + Foundation Model API recommendations`
 
-→ `Lakebase synced operational tables`
+→ `Lakebase Autoscaling production branch + synced operational tables`
 
 → `FastAPI on Databricks Apps + curated Genie Agent`
 
@@ -112,7 +112,7 @@ The headline creator grew from **$5K in June to $402K in September**, with 97–
 
 | Decision | Why | Trade-off |
 |---|---|---|
-| Serve the app from Lakebase | Sub-second operational reads without waking a warehouse | Requires governed lakehouse-to-Lakebase synchronization |
+| Serve the app from Lakebase Autoscaling | Sub-second operational reads, managed OAuth, and elastic compute without waking a warehouse | Requires governed lakehouse-to-Lakebase synchronization |
 | Persist `ai_gen` recommendations | Auditable, stable default; no LLM inference on page open | Refreshes per orchestration rather than continuously |
 | Expose a separate model endpoint route | Proves governed on-demand inference and supports interactive testing | Adds variable latency and token cost, so it is not used for page startup |
 | Curate Genie over UC tables | Natural language plus inspectable generated SQL | Genie analytical execution uses a SQL warehouse |
