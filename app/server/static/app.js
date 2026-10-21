@@ -994,14 +994,26 @@
     if (prop.pollHandle) clearInterval(prop.pollHandle);
     const deadline = Date.now() + 10 * 60 * 1000;
     let lastStages = {};
+    let pollInProgress = false;
+    let transientFailures = 0;
     const poll = async () => {
+      if (pollInProgress) return;
+      pollInProgress = true;
       try {
         const r = await fetch(`/v1/admin/propagation/changes/${encodeURIComponent(changeId)}/status`);
         if (!r.ok) {
-          const t = await r.text();
-          showPropError(`status ${r.status}: ${t}`);
+          if ([502, 503, 504].includes(r.status)) {
+            transientFailures += 1;
+            document.getElementById('prop-status').textContent = 'app reconnecting';
+            if (transientFailures >= 20) {
+              showPropError('The app is still restarting. Refresh the page to resume tracking this change.');
+            }
+            return;
+          }
+          showPropError(`status check failed (${r.status})`);
           return;
         }
+        transientFailures = 0;
         const d = await r.json();
         // Update stage dots / edges
         const keys = ['raw','bronze','platinum','lakebase','api'];
@@ -1052,8 +1064,13 @@
           endPush();
         }
       } catch (e) {
-        showPropError('poll error: ' + e);
-        endPush();
+        transientFailures += 1;
+        document.getElementById('prop-status').textContent = 'app reconnecting';
+        if (transientFailures >= 20) {
+          showPropError('Unable to reconnect to the app. Refresh the page to resume tracking this change.');
+        }
+      } finally {
+        pollInProgress = false;
       }
     };
     prop.pollHandle = setInterval(poll, 1500);
