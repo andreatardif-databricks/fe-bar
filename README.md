@@ -4,6 +4,27 @@
 
 - `RAW_EXECUTION_TRANSCRIPT.md` — pasted successful job state, live model response, MLflow UC trace, and app OTEL UC row.
 
+Directly reproduced execution excerpts:
+
+```text
+2026-10-20 17:14:46 "[prod] Pulsar — Daily Orchestration" TERMINATED SUCCESS
+run_id=1013848902778635
+generate_demo_data=SUCCESS → run_pipeline=SUCCESS → generate_ai_insights=SUCCESS → trigger_lakebase_sync=SUCCESS → freshness_check=SUCCESS
+```
+
+```text
+Genie question: Which API endpoint shows renewal risk?
+Genie status: COMPLETED
+Genie answer: From api_endpoint_catalog, the API endpoint for renewal risk is GET /v1/brands/{brand_id}/renewal-health. It returns renewal health, ARR, revenue, and active campaign KPIs and uses X-Brand-API-Key authentication.
+Conversation ID: 01f1cce7f0581fcdaed78469249b327a
+```
+
+```json
+{"endpoint":"databricks-claude-haiku-5-5","recommendation":"Recommended action: Reallocate a portion of the remaining Holiday Glow budget toward the highest-performing creators and content formats, and pause spend on underperformers, to push ROI above the current 1.500.","usage":{"completion_tokens":95,"prompt_tokens":114,"total_tokens":209}}
+```
+
+The Genie interaction is stored twice in Unity Catalog: an MLflow `AGENT` span in `traackr_mlflow_otel_spans` and the full sanitized question/answer in `app_otel_logs`. OAuth tokens and user identity are never logged.
+
 - Executable `ai_gen` SQL: [`AI_GEN_RECOMMENDATIONS.sql`](AI_GEN_RECOMMENDATIONS.sql)
 - Orchestrated AI job: [`src/jobs/generate_ai_insights.py`](src/jobs/generate_ai_insights.py)
 - Executable model-serving call: [`MODEL_ENDPOINT_RECOMMENDATION.py`](MODEL_ENDPOINT_RECOMMENDATION.py)

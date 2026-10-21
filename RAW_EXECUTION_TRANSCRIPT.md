@@ -83,3 +83,42 @@ The record above is persisted in `at_10526_workspace.influencer_engagement_fe_ba
 ```
 
 The OTEL record is persisted in `at_10526_workspace.influencer_engagement_fe_bar.app_otel_logs`. Evidence queries used warehouse `70662a24f8050a48`.
+
+## Deployed Genie Answer
+
+```json
+{
+  "space_id":"01f1cbfef7e81a1d8d9161f8fd8d65f6",
+  "conversation_id":"01f1cce7f0581fcdaed78469249b327a",
+  "message_id":"01f1cce7f0681c72b8b1f9733ab126f0",
+  "status":"COMPLETED",
+  "answer":"From **api_endpoint_catalog**, the API endpoint for renewal risk is **GET /v1/brands/{brand_id}/renewal-health**. Its purpose is Returns renewal health, ARR, revenue, and active campaign KPIs, and it uses **X-Brand-API-Key** authentication.",
+  "api_script":"curl --request GET --url 'https://influencer-fe-bar-7474653524978634.aws.databricksapps.com/v1/brands/ACC-00001/renewal-health' --header 'Accept: application/json' --header 'X-Brand-API-Key: pk_demo_all'",
+  "genie_url":"https://dbc-01f27b97-0e2e.cloud.databricks.com/genie/rooms/01f1cbfef7e81a1d8d9161f8fd8d65f6?o=7474653524978634"
+}
+```
+
+## Persisted Genie Telemetry
+
+```json
+{
+  "otel_table":"at_10526_workspace.influencer_engagement_fe_bar.app_otel_logs",
+  "event_timestamp":"2026-10-21T00:40:06.071Z",
+  "route":"/v1/genie/ask",
+  "http_status_code":"200",
+  "duration_ms":"8513.88922300248",
+  "conversation_id":"01f1cce7f0581fcdaed78469249b327a",
+  "body":"Which API endpoint shows renewal risk? → GET /v1/brands/{brand_id}/renewal-health"
+}
+```
+
+```json
+{
+  "mlflow_table":"at_10526_workspace.influencer_engagement_fe_bar.traackr_mlflow_otel_spans",
+  "trace_id":"f7d09419900782dd994c22eee1f1a321",
+  "name":"genie_agent_answer",
+  "span_type":"AGENT",
+  "status":"STATUS_CODE_OK",
+  "conversation_id":"01f1cce7f0581fcdaed78469249b327a"
+}
+```

@@ -154,6 +154,20 @@ The repository commits readable text proving:
 - Stage and end-to-end propagation latency
 - MLflow `CHAT_MODEL` traces and app OTEL request logs persisted in UC
 
+Direct execution transcript:
+
+```text
+2026-10-20 17:14:46 "[prod] Pulsar — Daily Orchestration" TERMINATED SUCCESS
+run_id=1013848902778635 · all five dependent tasks SUCCESS
+
+Genie status=COMPLETED · conversation_id=01f1cce7f0581fcdaed78469249b327a
+Question: Which API endpoint shows renewal risk?
+Answer: GET /v1/brands/{brand_id}/renewal-health
+
+Model endpoint=databricks-claude-haiku-5-5 · total_tokens=209
+MLflow trace status=STATUS_CODE_OK · app OTEL HTTP status=200
+```
+
 Start with `RAW_EXECUTION_TRANSCRIPT.md`: it contains successful run `1013848902778635`, every task state, the deployed model response, the MLflow UC trace, and the app OTEL UC row. Then review `EXECUTION_EVIDENCE.md`, `SYNTHETIC_DATA.md`, and `AI_GEN_RECOMMENDATIONS.sql`.
 
 ---
