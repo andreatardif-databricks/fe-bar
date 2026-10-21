@@ -1,32 +1,16 @@
-command:
-  - "uvicorn"
-  - "server.main:app"
-  - "--host"
-  - "0.0.0.0"
-  - "--port"
-  - "8000"
+command: ["uvicorn", "radar.main:app", "--host", "0.0.0.0", "--port", "8000"]
 env:
-  - name: TRAACKR_BRAND_KEY_PREFIX
-    value: "pk_demo_"
-  - name: WAREHOUSE_ID
-    valueFrom: sql-warehouse
   - name: LAKEBASE_ENDPOINT
-    valueFrom: lakebase
-  - name: PGAPPNAME
-    value: "influencer-fe-bar"
-  # Lakebase Postgres schema where the synced tables (synced_brands/campaigns/creators) live.
-  # The app reads these tables directly (no public.* view indirection).
-  - name: UC_SCHEMA
-    value: "influencer_engagement_fe_bar"
-  - name: UC_CATALOG
-    value: "at_10526_workspace"
-  - name: DATABRICKS_GENIE_SPACE_ID
+    value: "projects/renewal-radar-lb/branches/production/endpoints/primary"
+  - name: RADAR_SCHEMA
+    value: "renewal_radar"
+  - name: GENIE_SPACE_ID
     valueFrom: genie-space
   - name: SERVING_ENDPOINT
-    valueFrom: campaign-recommendation-model
-  - name: SDP_PIPELINE_ID
-    value: "6bafb573-8965-4f9e-bf4e-c8f7e06a9872"
-  - name: SYNCED_CREATORS_PIPELINE_ID
-    value: "77b1d73b-9668-49d4-bd33-29a52e9de4d6"
-  - name: SYNCED_CAMPAIGNS_PIPELINE_ID
-    value: "195d467e-82c9-4aba-b832-4d7f5b97ea45"
+    valueFrom: explain-model
+  - name: RADAR_JOB_ID
+    valueFrom: orchestration-job
+  - name: RADAR_PUBLIC_URL
+    value: "https://traackr-renewal-radar-7474647371758861.aws.databricksapps.com"
+  - name: MLFLOW_TRACKING_URI
+    value: "databricks"

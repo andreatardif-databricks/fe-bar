@@ -1,263 +1,149 @@
-# Traackr — Influencer Revenue Pipeline (Databricks Asset Bundle)
-# Deploy:  databricks bundle deploy --var="catalog=<your_catalog>" --var="schema=<your_schema>" --var="warehouse_id=<your_warehouse_id>"
-# Run:     databricks bundle run pulsar_setup         # one-time: lakebase + synced tables + metric views
-#          databricks bundle run pulsar_orchestration # day-2: regen data + pipeline + sync + freshness
-#          databricks bundle run pulsar_app           # start the FastAPI app
+# Traackr Renewal Radar: creator-campaign intelligence served to brand portals.
 #
-# Note: the default Lakebase project/branch/database IDs match the live autoscaling
-# resources. Override them when deploying to another workspace.
+#   databricks bundle deploy
+#   databricks bundle run radar_daily      # generate -> pipeline -> train -> score+ai_gen -> secure -> sync -> freshness
+#
+# The Lakebase project, Genie space and model endpoint are referenced by id so the same bundle
+# can point at another workspace through variables.
 
 bundle:
-  name: influencer-engagement-fe-bar
+  name: traackr-renewal-radar
 
-sync:
-  include:
-    - "src/**"
-    - "app/**"
+include:
+  - resources/*.yml
 
 variables:
   catalog:
-    description: "Unity Catalog for demo resources"
-    default: "at_10526_workspace"
+    default: at_workspace_102126
   schema:
-    description: "Schema within the catalog"
-    default: "influencer_engagement_fe_bar"
+    default: renewal_radar
   warehouse_id:
-    description: "SQL Warehouse ID"
-    default: "70662a24f8050a48"
-  app_name:
-    description: "Databricks App name (must be unique per workspace)"
-    default: "influencer-fe-bar"
-  lakebase_project_id:
-    description: "Lakebase Autoscaling project ID"
-    default: "influencer-fe-bar-lb"
-  lakebase_branch_id:
-    description: "Lakebase Autoscaling branch ID"
-    default: "production"
-  lakebase_database_id:
-    description: "Lakebase Autoscaling database resource ID"
-    default: "db-ri09-9dhl132wxg"
-  lakebase_database_name:
-    description: "Postgres database inside the Lakebase instance"
-    default: "influencer_fe_bar"
+    default: ab3981ee46b198cc
+  lakebase_branch:
+    default: projects/renewal-radar-lb/branches/production
+  lakebase_endpoint:
+    default: projects/renewal-radar-lb/branches/production/endpoints/primary
+  lakebase_database_resource:
+    default: projects/renewal-radar-lb/branches/production/databases/databricks-postgres
+  pg_database:
+    default: databricks_postgres
   genie_space_id:
-    description: "Curated Traackr Genie Agent ID"
-    default: "01f1cbfef7e81a1d8d9161f8fd8d65f6"
+    default: 01f1cd55187c1612a46bd87e6dcfd7da
 
 targets:
-  dev:
+  main:
     default: true
-    mode: development
-    presets:
-      name_prefix: ''
-
-  prod:
-    mode: production
     workspace:
-      root_path: /Workspace/Users/andrea.tardif@databricks.com/.bundle/${bundle.name}/${bundle.target}
+      root_path: ~/.bundle/${bundle.name}/${bundle.target}
 
 resources:
-  # ──────────────────────────────────────────────────────────────────────────
-  # UC INFRASTRUCTURE
-  # ──────────────────────────────────────────────────────────────────────────
   schemas:
-    pulsar_schema:
+    radar:
       name: ${var.schema}
       catalog_name: ${var.catalog}
-      comment: "Pulsar Influence Co. demo — bronze→silver→gold→platinum + serving"
+      comment: "Renewal Radar - creator-campaign ROI, renewal risk and AI actions for Traackr brand clients"
 
   volumes:
-    raw_data:
+    landing:
       catalog_name: ${var.catalog}
-      schema_name: ${var.schema}
-      name: "raw_data"
-      volume_type: "MANAGED"
-      comment: "Synthetic source-system parquet drops (Salesforce, HubSpot, TikTok, Google Ads, Stripe)"
-    cdc_events:
-      catalog_name: ${var.catalog}
-      schema_name: ${var.schema}
-      name: "cdc_events"
-      volume_type: "MANAGED"
-      comment: "Pulsar internal CDC stream (creators + campaigns)"
+      schema_name: ${resources.schemas.radar.name}
+      name: landing
+      comment: Raw source drops (accounts, invoices, ad spend, social events, sales, CDC feeds)
 
-  # ──────────────────────────────────────────────────────────────────────────
-  # SDP PIPELINE — 4 layers (bronze → silver → gold → platinum)
-  # Hardcoded volume paths in 01_bronze.sql match the default catalog/schema.
-  # Override catalog/schema via vars only if you also edit those paths.
-  # ──────────────────────────────────────────────────────────────────────────
   pipelines:
-    pulsar_pipeline:
-      name: "[${bundle.target}] Pulsar Influence Pipeline"
+    radar_pipeline:
+      name: radar-medallion
       catalog: ${var.catalog}
-      schema: ${var.schema}
-      libraries:
-        - file:
-            path: ./src/pipeline/01_bronze.sql
-        - file:
-            path: ./src/pipeline/02_silver.sql
-        - file:
-            path: ./src/pipeline/03_gold.sql
-        - file:
-            path: ./src/pipeline/04_platinum.sql
-      configuration:
-        demo.catalog: ${var.catalog}
-        demo.schema: ${var.schema}
+      schema: ${resources.schemas.radar.name}
       serverless: true
       continuous: false
-      channel: current
+      channel: CURRENT
+      configuration:
+        radar.landing: /Volumes/${var.catalog}/${var.schema}/landing
+      libraries:
+        - file: { path: src/pipeline/10_bronze.sql }
+        - file: { path: src/pipeline/20_silver.sql }
+        - file: { path: src/pipeline/30_gold.sql }
+        - file: { path: src/pipeline/40_platinum.sql }
 
-  # ──────────────────────────────────────────────────────────────────────────
-  # JOBS
-  # ──────────────────────────────────────────────────────────────────────────
   jobs:
-    # One-time setup: verify the autoscaling Lakebase project/database, create
-    # serving synced tables, and install metric views.
-    pulsar_setup:
-      name: "[${bundle.target}] Pulsar — One-Time Setup"
-      description: "Lakebase Autoscaling project + synced tables + metric views"
-
-      tasks:
-        - task_key: generate_demo_data
-          description: "Generate synthetic source and CDC data"
-          notebook_task:
-            notebook_path: ./src/data_gen/generate.py
-          environment_key: sdk_env
-
-        - task_key: setup_lakebase
-          description: "Verify Lakebase Autoscaling production branch and database"
-          notebook_task:
-            notebook_path: ./src/deploy/setup_lakebase.py
-          environment_key: sdk_env
-
-        - task_key: run_pipeline_first
-          description: "First pipeline run so platinum tables exist before synced-table creation"
-          depends_on:
-            - task_key: generate_demo_data
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.pulsar_pipeline.id}
-
-        - task_key: create_synced_tables
-          description: "Reverse-ETL governed serving tables into Lakebase"
-          depends_on:
-            - task_key: setup_lakebase
-            - task_key: run_pipeline_first
-          notebook_task:
-            notebook_path: ./src/deploy/create_synced_tables.py
-          environment_key: sdk_env
-
-        - task_key: create_metric_views
-          description: "3 governed UC metric views over gold/platinum"
-          depends_on:
-            - task_key: run_pipeline_first
-          notebook_task:
-            notebook_path: ./src/deploy/create_metric_views.py
-          environment_key: sdk_env
-
-        - task_key: generate_ai_insights
-          description: "Persist governed GenAI recommendations and API documentation"
-          depends_on:
-            - task_key: run_pipeline_first
-          notebook_task:
-            notebook_path: ./src/jobs/generate_ai_insights.py
-          environment_key: sdk_env
-
-        - task_key: setup_observability
-          description: "Link MLflow traces to Unity Catalog and create governed app OTEL logs"
-          notebook_task:
-            notebook_path: ./src/deploy/setup_observability.py
-          environment_key: observability_env
-
-      environments:
-        - environment_key: sdk_env
-          spec:
-            client: "3"
-            dependencies:
-              - "psycopg[binary]==3.2.3"
-              - "databricks-sdk>=0.102.0"
-        - environment_key: observability_env
-          spec:
-            client: "3"
-            dependencies:
-              - "mlflow[databricks]>=3.11.0"
-              - "databricks-sdk>=0.102.0"
-
-    # Day-2 orchestration: refresh synthetic data, run pipeline, trigger
-    # synced-table refresh, verify <5min freshness SLA.
-    pulsar_orchestration:
-      name: "[${bundle.target}] Pulsar — Daily Orchestration"
-      description: "generate → pipeline → trigger lakebase sync → freshness check"
-
-      tasks:
-        - task_key: generate_demo_data
-          notebook_task:
-            notebook_path: ./src/data_gen/generate.py
-          environment_key: data_env
-
-        - task_key: run_pipeline
-          depends_on:
-            - task_key: generate_demo_data
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.pulsar_pipeline.id}
-
-        - task_key: trigger_lakebase_sync
-          depends_on:
-            - task_key: run_pipeline
-            - task_key: generate_ai_insights
-          notebook_task:
-            notebook_path: ./src/jobs/trigger_lakebase_sync.py
-          environment_key: data_env
-
-        - task_key: generate_ai_insights
-          depends_on:
-            - task_key: run_pipeline
-          notebook_task:
-            notebook_path: ./src/jobs/generate_ai_insights.py
-          environment_key: data_env
-
-        - task_key: freshness_check
-          depends_on:
-            - task_key: trigger_lakebase_sync
-          notebook_task:
-            notebook_path: ./src/jobs/freshness_check.py
-          environment_key: data_env
-
+    radar_daily:
+      name: radar-daily-orchestration
+      description: Dependency-enforced run from raw drop to the Lakebase-served API
+      parameters:
+        - { name: catalog, default: "${var.catalog}" }
+        - { name: schema, default: "${var.schema}" }
       environments:
         - environment_key: data_env
           spec:
             client: "3"
-            dependencies:
-              - "psycopg[binary]==3.2.3"
-              - "faker==30.8.2"
-              - "databricks-sdk>=0.102.0"
+            dependencies: ["numpy", "pandas"]
+        - environment_key: ml_env
+          spec:
+            client: "3"
+            dependencies: ["scikit-learn", "mlflow>=3.1"]
+        - environment_key: sdk_env
+          spec:
+            client: "3"
+            dependencies: ["databricks-sdk>=0.102.0", "psycopg[binary]>=3.2"]
+      tasks:
+        - task_key: generate_sources
+          environment_key: data_env
+          notebook_task:
+            notebook_path: src/generate/generate_sources.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
 
-  # ──────────────────────────────────────────────────────────────────────────
-  # APP — customer-facing FastAPI bound directly to Lakebase Autoscaling.
-  # ──────────────────────────────────────────────────────────────────────────
-  apps:
-    pulsar_app:
-      name: ${var.app_name}
-      description: "Pulsar Influence Co. — brand-client read API"
-      source_code_path: ./app
-      lifecycle:
-        prevent_destroy: true
-      user_api_scopes:
-        - dashboards.genie
-      resources:
-        - name: sql-warehouse
-          sql_warehouse:
-            id: ${var.warehouse_id}
-            permission: CAN_USE
-        - name: lakebase
-          postgres:
-            branch: projects/${var.lakebase_project_id}/branches/${var.lakebase_branch_id}
-            database: projects/${var.lakebase_project_id}/branches/${var.lakebase_branch_id}/databases/${var.lakebase_database_id}
-            permission: CAN_CONNECT_AND_CREATE
-        - name: genie-space
-          genie_space:
-            name: "Traackr Influencer Revenue Agent"
-            space_id: ${var.genie_space_id}
-            permission: CAN_RUN
-        - name: campaign-recommendation-model
-          serving_endpoint:
-            name: databricks-claude-haiku-5-5
-            permission: CAN_QUERY
+        - task_key: run_pipeline
+          depends_on: [{ task_key: generate_sources }]
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.radar_pipeline.id}
+
+        - task_key: train_renewal_risk
+          depends_on: [{ task_key: run_pipeline }]
+          environment_key: ml_env
+          notebook_task:
+            notebook_path: src/ml/train_renewal_risk.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
+
+        - task_key: score_and_recommend
+          depends_on: [{ task_key: train_renewal_risk }]
+          environment_key: ml_env
+          notebook_task:
+            notebook_path: src/ml/score_and_recommend.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
+
+        - task_key: publish_api_catalog
+          depends_on: [{ task_key: score_and_recommend }]
+          environment_key: data_env
+          notebook_task:
+            notebook_path: src/ops/publish_api_catalog.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
+
+        - task_key: secure_tables
+          depends_on: [{ task_key: publish_api_catalog }]
+          environment_key: data_env
+          notebook_task:
+            notebook_path: src/ops/secure_tables.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
+
+        - task_key: sync_lakebase
+          depends_on: [{ task_key: secure_tables }]
+          environment_key: sdk_env
+          notebook_task:
+            notebook_path: src/ops/sync_lakebase.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+              branch: "${var.lakebase_branch}"
+              pg_database: "${var.pg_database}"
+
+        - task_key: freshness_check
+          depends_on: [{ task_key: sync_lakebase }]
+          environment_key: sdk_env
+          notebook_task:
+            notebook_path: src/ops/freshness_check.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+              endpoint: "${var.lakebase_endpoint}"
+              pg_database: "${var.pg_database}"

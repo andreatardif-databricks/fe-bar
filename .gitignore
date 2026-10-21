@@ -1,12 +1,5 @@
-.DS_Store
 .databricks/
-.claude/
-.vscode/
-app/server/_bundle_source/
 __pycache__/
-*.py[cod]
-.env
-.env.*
-node_modules/
-dist/
-build/
+*.pyc
+.venv/
+.DS_Store

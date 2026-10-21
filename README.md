@@ -1,310 +1,87 @@
-# Traackr Influencer Revenue Decision Platform
+# Traackr Renewal Radar
 
-## Start Here: Verifiable AI and Runtime Proof
+Creator-campaign intelligence for a creator-marketing platform's brand clients: which brands are about
+to leave, which campaigns are burning budget, and what to do next. Everything runs on synthetic data.
 
-- `RAW_EXECUTION_TRANSCRIPT.md` — pasted successful job state, live model response, MLflow UC trace, and app OTEL UC row.
+**Customer:** Traackr, an influencer-marketing technology platform. **Decision:** where to intervene
+before a brand's renewal, and where a brand should move spend, while a campaign is still running.
 
-Directly reproduced execution excerpts:
+## Journey
 
-```text
-2026-10-20 17:14:46 "[prod] Pulsar — Daily Orchestration" TERMINATED SUCCESS
-run_id=1013848902778635
-generate_demo_data=SUCCESS → run_pipeline=SUCCESS → generate_ai_insights=SUCCESS → trigger_lakebase_sync=SUCCESS → freshness_check=SUCCESS
+```
+Synthetic CRM, billing, ad, social, sales + CDC feeds  ->  UC volume (landing)
+  -> Lakeflow (Auto Loader bronze -> silver -> gold -> platinum with AUTO CDC)
+  -> MLflow renewal-risk model (UC-registered, champion alias)
+  -> ai_gen actions grounded in campaign metrics AND the model's risk score
+  -> Lakebase Autoscaling synced tables
+  -> FastAPI Databricks App  +  curated Genie space
 ```
 
-```text
-Genie question: Which API endpoint shows renewal risk?
-Genie status: COMPLETED
-Genie answer: From api_endpoint_catalog, the API endpoint for renewal risk is GET /v1/brands/{brand_id}/renewal-health. It returns renewal health, ARR, revenue, and active campaign KPIs and uses X-Brand-API-Key authentication.
-Conversation ID: 01f1cce7f0581fcdaed78469249b327a
-```
+One job, `radar-daily-orchestration`, enforces the dependency order and ends with a freshness gate.
 
-```json
-{"endpoint":"databricks-claude-haiku-5-5","recommendation":"Recommended action: Reallocate a portion of the remaining Holiday Glow budget toward the highest-performing creators and content formats, and pause spend on underperformers, to push ROI above the current 1.500.","usage":{"completion_tokens":95,"prompt_tokens":114,"total_tokens":209}}
-```
+## Layout
 
-The Genie interaction is stored twice in Unity Catalog: an MLflow `AGENT` span in `traackr_mlflow_otel_spans` and the full sanitized question/answer in `app_otel_logs`. OAuth tokens and user identity are never logged.
-
-- Executable `ai_gen` SQL: [`AI_GEN_RECOMMENDATIONS.sql`](AI_GEN_RECOMMENDATIONS.sql)
-- Orchestrated AI job: [`src/jobs/generate_ai_insights.py`](src/jobs/generate_ai_insights.py)
-- Executable model-serving call: [`MODEL_ENDPOINT_RECOMMENDATION.py`](MODEL_ENDPOINT_RECOMMENDATION.py)
-- Actual text run output: [`EXECUTION_EVIDENCE.md`](EXECUTION_EVIDENCE.md)
-- Synthetic data logic, correlations, volumes, and executed profiles: [`SYNTHETIC_DATA.md`](SYNTHETIC_DATA.md)
-- Full FE Bar requirement map: [`FE_BAR_SUBMISSION.md`](FE_BAR_SUBMISSION.md)
-- Business presentation: [`presentation/traackr_fe_bar_deck.md`](presentation/traackr_fe_bar_deck.md)
-
-This repository is an independently implemented Traackr prototype using synthetic data. The code, prompts, orchestration, deployment configuration, and captured execution output required to evaluate the build are included directly in the repository.
-
-## Architecture
-
-Production-shape Databricks Asset Bundle that deploys, in one `databricks bundle deploy`:
-
-- A 4-layer SDP medallion pipeline (Bronze → Silver → Gold → Platinum) over 6 source feeds
-- A governed semantic layer of 3 Metric Views (Unity Catalog) over Platinum/Gold
-- A Lakebase (managed Postgres) instance and database
-- 3 synced tables that mirror Platinum into Lakebase in TRIGGERED mode
-- 2 Lakeflow Jobs: one-time setup and day-2 orchestration
-- A customer-facing FastAPI on Databricks Apps with a built-in developer portal (docs, Try-it, key management, architecture diagram, and a Live Change Propagation tab that proves end-to-end freshness)
-
-The bundle is workspace-portable. Configure 5 variables, run a handful of commands, and the whole stack lands in your workspace.
-
----
-
-## What this bundle deploys
-
-| Layer | Resource | File |
-|---|---|---|
-| UC infrastructure | catalog (pre-existing), schema, 2 volumes (`raw_data`, `cdc_events`) | `databricks.yml` |
-| SDP pipeline | Bronze streaming tables, Silver/Gold materialized views, Platinum AUTO CDC streaming tables | `src/pipeline/01-04_*.sql` |
-| Lakebase | Autoscaling project + production branch, 4 synced tables, 3 metric views | `src/deploy/*.py` |
-| Orchestration | `pulsar_setup` (one-time), `pulsar_orchestration` (day-2) | `databricks.yml` jobs block + `src/jobs/*.py` |
-| App | FastAPI brand-client API + developer portal (incl. Live Change Propagation) | `app/**` |
-
----
-
-## Prerequisites
-
-| | |
+| Path | Purpose |
 |---|---|
-| Databricks workspace | Unity Catalog enabled, AWS or Azure |
-| Databricks CLI | v0.220+ (`databricks --version`) |
-| Workspace permissions | Workspace admin (you will attach an autoscaling Lakebase project, a Databricks App, and several pipelines/jobs) |
-| Serverless SQL warehouse | Used for metric-view creation and the freshness/propagation status checks |
-| Python | 3.11+ locally for the snapshot script |
+| `src/generate/generate_sources.py` | Story-driven generator. Fails the job if the narrative drifts (see below) |
+| `src/pipeline/` | Lakeflow SQL: `10_bronze`, `20_silver`, `30_gold`, `40_platinum` |
+| `src/ml/train_renewal_risk.py` | Trains and registers the classifier; promotes only if it holds up |
+| `src/ml/score_and_recommend.py` | Scores brands, runs `ai_gen`, writes the bottom-up `value_summary` |
+| `src/ops/` | API catalog, row-level security, Lakebase sync, freshness gate |
+| `app/radar/` | FastAPI app: scoped API keys, Genie (as the user), live model call, telemetry |
+| `genie/radar_space.json` | The Genie space definition |
+| `docs/` | Deck, AI build log |
+| `evidence/` | Raw task output, API responses, Genie and model transcripts |
 
----
+## What the generator enforces
 
-## Variables to configure
+The job fails unless all of these hold on the generated data:
 
-All variables live in the top of `databricks.yml`. Either edit defaults or pass `--var=key=value` to each `bundle` command.
+- Creator tier fixes the follower band (nano 1K-10K ... macro 1M-5M) with no exceptions.
+- Account ARR respects its tier band.
+- One creator/campaign pair (`CR-00042` / `CMP-00137`) carries a seeded surge that totals **exactly $224,000**, and is the top revenue pair.
+- Seasonality differs by region: NA/EMEA holiday, APAC Singles' Day and Lunar New Year, LATAM summer peak. NA holiday ROI must exceed off-season ROI.
+- A 10-30% structurally inefficient campaign cohort exists (this is what the reallocation opportunity is built from).
+- LATAM renewal churn exceeds NA in the model's training labels.
 
-| Variable | Description | Example |
-|---|---|---|
-| `catalog` | UC catalog the schema/volumes/tables go into. Must already exist. | `traackr_demo` |
-| `schema` | UC schema. Dev mode auto-prefixes (`dev_<user>_<schema>`). | `influencer_pipeline` |
-| `warehouse_id` | Serverless SQL warehouse the deploy + admin paths talk to. | `1234567890abcdef` |
-| `app_name` | Databricks App name (unique per workspace). | `traackr-influencer-api` |
-| `lakebase_project_id` | Lakebase Autoscaling project ID. | `influencer-fe-bar-lb` |
-| `lakebase_branch_id` | Autoscaling branch used by the app. | `production` |
-| `lakebase_database_id` | Database resource ID on the branch. | `db-ri09-9dhl132wxg` |
-| `lakebase_database_name` | PostgreSQL database name. | `influencer_fe_bar` |
+## Governance
 
-After editing `databricks.yml`, also update the hardcoded `/Volumes/<catalog>/<schema>/...` paths in:
+- Quality expectations drop bad rows at bronze; table and column comments throughout.
+- **Row-level security:** `brand_row_filter` (UC row filter) on `brand_radar` and `campaign_actions`,
+  backed by the `brand_access` grants table. Lakebase cannot sync from a row-filtered table, so the sync
+  reads unfiltered `*_serving` copies that only the pipeline owner can read.
+- **API layer:** `portfolio` and `brand` key scopes. A brand key asking for another brand gets `404`.
+- Every task writes a structured record to `run_log`; the app writes requests to `radar_app.request_log`.
 
-- `src/pipeline/01_bronze.sql` (Auto Loader source paths, 8 occurrences)
-- `src/data_gen/generate.py` (`CATALOG`, `SCHEMA` constants near the top)
-- `src/data_gen/fix_cdc.py`
-- `src/deploy/*.py` (`CATALOG`, `SCHEMA`, `WAREHOUSE_ID`)
-- `src/jobs/*.py` (`CATALOG`, `SCHEMA`, `WAREHOUSE_ID`)
-- `src/metric_views/create_metric_views.py`
-- `app/server/routes/freshness.py` (`SCHEMA`, `WAREHOUSE_ID`)
-- `app/server/routes/propagation.py` (`SCHEMA`, `WAREHOUSE_ID`, plus the 3 pipeline IDs that Databricks generates on first deploy)
-- `app/server/static/app.js` (`PROP_WS.host`, `PROP_WS.orgId`, `PROP_WS.sdpPipelineId`, `PROP_WS.syncPipelineId.{creator,campaign}`, `PROP_WS.lakebaseProject`, `PROP_WS.lakebaseBranch`, `PROP_WS.lakebaseDatabase`) — these power the per-stage links in the Live Change Propagation tab
+## Run it
 
-The hardcoding is intentional for demo readability. For a long-lived deployment, refactor to read these from a single config block.
-
----
-
-## Deploy (first time)
+The app resource needs a Genie space, and the space needs the tables, so deploy in two stages.
 
 ```bash
-# 0. CLI auth
-databricks auth login --host https://<your-workspace>.cloud.databricks.com --profile traackr
-export DATABRICKS_CONFIG_PROFILE=traackr
-
-# 1. Create the catalog (one-time, if it does not exist)
-databricks api post /api/2.0/sql/statements \
-  --json '{"warehouse_id":"<WAREHOUSE_ID>","statement":"CREATE CATALOG IF NOT EXISTS traackr_demo"}'
-
-# 2. Validate + deploy bundle resources (schema, volumes, pipeline, jobs, app definition)
-databricks bundle validate
+# stage 1: data layer (schema, volume, pipeline, job)
+mv resources/app.yml resources/app.yml.pending      # only if app.yml is present
 databricks bundle deploy
+databricks bundle run radar_daily                   # raw drop -> Lakebase-served tables
 
-# 3. Populate source volumes FIRST (otherwise Bronze has nothing to read)
-databricks bundle run pulsar_orchestration --only generate_demo_data
-
-# 4. One-time setup: verify the Lakebase Autoscaling project, run the SDP
-#    pipeline once, create the 4 synced tables, and install the metric views.
-databricks bundle run pulsar_setup
+# stage 2: Genie space, then the app
+databricks genie create-space <warehouse_id> "$(python -c 'import json;print(json.dumps(json.load(open("genie/radar_space.json"))))')" --title "Traackr Renewal Radar"
+#   put the returned space id in databricks.yml (genie_space_id), then:
+mv resources/app.yml.pending resources/app.yml
+databricks bundle deploy && databricks bundle run radar_app
+python scripts/grant_app_access.py --profile <profile>   # once, after the app's first deploy
+python scripts/capture_evidence.py --run-id <job run id> --app-url <url> --warehouse <id> --catalog <catalog>
 ```
 
-The app resource binds directly to the autoscaling `production` branch and injects `PGHOST`, `PGUSER`, `PGDATABASE`, and `LAKEBASE_ENDPOINT`.
+You also need a Lakebase Autoscaling project (`databricks postgres create-project renewal-radar-lb`).
 
-```bash
-# 5. Deploy the app so the autoscaling binding creates its OAuth Postgres role.
+Variables (catalog, schema, warehouse, Lakebase branch/endpoint/database, Genie space) are in
+`databricks.yml`.
 
-APP_SP=$(databricks apps get traackr-influencer-api --output json | jq -r '.service_principal_client_id')
+## Honest limits
 
-# 5a. Grant least-privilege table access after the role exists.
-#     Connect through `databricks psql --autoscaling --project influencer-fe-bar-lb`:
-#
-#     GRANT USAGE ON SCHEMA public TO "<sp-uuid>";
-#     GRANT USAGE ON SCHEMA "<prefixed-schema>" TO "<sp-uuid>";
-#     GRANT SELECT ON ALL TABLES IN SCHEMA "<prefixed-schema>" TO "<sp-uuid>";
-#     CREATE OR REPLACE VIEW public.brands    AS SELECT * FROM "<prefixed-schema>".synced_brands;
-#     CREATE OR REPLACE VIEW public.campaigns AS SELECT * FROM "<prefixed-schema>".synced_campaigns;
-#     CREATE OR REPLACE VIEW public.creators  AS SELECT * FROM "<prefixed-schema>".synced_creators;
-#     GRANT SELECT ON public.brands, public.campaigns, public.creators TO "<sp-uuid>";
-
-# 6. (Optional, only if you want the Live Change Propagation tab) Grant the SP UC
-#    permissions to read Bronze + Platinum and to write the cdc_events volume,
-#    and CAN_RUN on the SDP + synced-table pipelines.
-
-# UC grants:
-databricks api post /api/2.0/sql/statements --json '{
-  "warehouse_id":"<WAREHOUSE_ID>","statement":
-  "GRANT USE CATALOG ON CATALOG traackr_demo TO `<sp-uuid>`;
-   GRANT USE SCHEMA ON SCHEMA traackr_demo.<prefixed-schema> TO `<sp-uuid>`;
-   GRANT SELECT ON TABLE traackr_demo.<prefixed-schema>.bronze_cdc_creators  TO `<sp-uuid>`;
-   GRANT SELECT ON TABLE traackr_demo.<prefixed-schema>.bronze_cdc_campaigns TO `<sp-uuid>`;
-   GRANT SELECT ON TABLE traackr_demo.<prefixed-schema>.platinum_creator_360  TO `<sp-uuid>`;
-   GRANT SELECT ON TABLE traackr_demo.<prefixed-schema>.platinum_campaign_360 TO `<sp-uuid>`;
-   GRANT READ VOLUME, WRITE VOLUME ON VOLUME traackr_demo.<prefixed-schema>.cdc_events TO `<sp-uuid>`"
-}'
-
-# Pipeline grants: SDP + the two synced-table refresh pipelines
-for PIPE in <sdp_pipeline_id> <synced_creators_pipeline_id> <synced_campaigns_pipeline_id>; do
-  databricks api patch "/api/2.0/permissions/pipelines/$PIPE" \
-    --json "{\"access_control_list\":[{\"service_principal_name\":\"$APP_SP\",\"permission_level\":\"CAN_RUN\"}]}"
-done
-
-# 7. Lakebase table for propagation tracking
-#    Connect as workspace admin and run the DDL from app/server/routes/propagation.py
-#    (look for `CREATE TABLE IF NOT EXISTS public.propagation_changes` in this README's
-#    public/api_keys + public/propagation_changes section below)
-
-# 8. Deploy + start the app
-databricks bundle run pulsar_app
-
-# 9. (Optional, day-2) End-to-end refresh on a schedule
-databricks bundle run pulsar_orchestration
-```
-
-When step 8 finishes, the developer portal is live at the URL the CLI prints, e.g.:
-`https://traackr-influencer-api-<workspace-id>.<region>.databricksapps.com/`
-
-Architecture (rendered live from `app/server/static/architecture.json`) is at `#architecture`. Live Change Propagation is at `#propagation`.
-
----
-
-## Provisioning details
-
-### `public.api_keys` (Lakebase)
-
-The brand-client API authenticates against this table:
-
-```sql
-CREATE TABLE public.api_keys (
-  api_key            text PRIMARY KEY,
-  brand_id           text NOT NULL,
-  brand_scope        text NOT NULL DEFAULT 'account_id'
-                       CHECK (brand_scope IN ('all','brand_name','account_id')),
-  label              text NOT NULL,
-  is_active          boolean NOT NULL DEFAULT true,
-  rate_limit_per_min int NOT NULL DEFAULT 60,
-  created_at         timestamptz NOT NULL DEFAULT now(),
-  expires_at         timestamptz,
-  last_used_at       timestamptz,
-  use_count          bigint NOT NULL DEFAULT 0
-);
-CREATE INDEX api_keys_brand_id_idx ON public.api_keys (brand_id);
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.api_keys TO "<app-sp-uuid>";
-```
-
-Seed at least one active key per brand so the developer portal's Try-it works. Use the `+ New API key` modal under `Admin → Manage API keys` to create more.
-
-### `public.propagation_changes` (Lakebase, optional)
-
-Required only if you enable the Live Change Propagation tab:
-
-```sql
-CREATE TABLE public.propagation_changes (
-  change_id     text PRIMARY KEY,
-  entity        text NOT NULL CHECK (entity IN ('creator','campaign')),
-  entity_id     text NOT NULL,
-  field         text NOT NULL,
-  old_value     text,
-  new_value     text,
-  brand_id      text,
-  sequence_no   bigint NOT NULL,
-  run_id        text,
-  sync_run_id   text,
-  sync_retriggered boolean NOT NULL DEFAULT false,
-  t_raw         timestamptz NOT NULL,
-  t_bronze      timestamptz,
-  t_platinum    timestamptz,
-  t_lakebase    timestamptz,
-  t_api         timestamptz,
-  error         text,
-  created_at    timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX propagation_changes_created_idx ON public.propagation_changes(created_at DESC);
-GRANT SELECT, INSERT, UPDATE ON public.propagation_changes TO "<app-sp-uuid>";
-```
-
-### Brand views in Lakebase
-
-The app reads from `public.brands`, `public.campaigns`, `public.creators`. Those are thin views over the synced tables that `pulsar_setup` lands in your prefixed schema:
-
-```sql
-CREATE OR REPLACE VIEW public.brands    AS SELECT * FROM "<prefixed-schema>".synced_brands;
-CREATE OR REPLACE VIEW public.campaigns AS SELECT * FROM "<prefixed-schema>".synced_campaigns;
-CREATE OR REPLACE VIEW public.creators  AS SELECT * FROM "<prefixed-schema>".synced_creators;
-GRANT SELECT ON public.brands, public.campaigns, public.creators TO "<app-sp-uuid>";
-```
-
----
-
-## Verifying the deploy
-
-1. **Architecture tab loads** with all 15 nodes positioned: `/#architecture`
-2. **Try-it on `GET /v1/brands/{brand_id}/renewal-health`** returns a row (use any active key from `public.api_keys`)
-3. **`GET /v1/freshness`** returns lag < 5 minutes for each of `creators`, `campaigns`, `brands`
-4. **Live Change Propagation**: push a `creator.status` flip and watch all 5 stages light up; total end-to-end should land in 2–4 minutes on a warm warehouse
-
----
-
-## Routine operations
-
-```bash
-# End-to-end day-2 refresh: regenerate data + run pipeline + trigger sync + freshness SLA
-databricks bundle run pulsar_orchestration
-
-# Re-snapshot the bundle viewer (run before EACH deploy if you've edited bundle code)
-./scripts/snapshot_bundle.sh
-
-# Push an app code change without re-running the whole bundle
-databricks bundle deploy
-databricks bundle run pulsar_app
-```
-
----
-
-## Customizing for your real data
-
-1. Replace `src/data_gen/generate.py` with your own ingestion (Lakeflow Connect connectors, partner ETL, Kafka → bronze, etc.).
-2. Match the CDC payload struct in `src/pipeline/01_bronze.sql` (the `bronze_cdc_*` tables) and `04_platinum.sql` (the AUTO CDC `KEYS` + `SEQUENCE BY`) to your real source feed.
-3. Swap the API auth model in `app/server/auth.py` (replace the `pk_demo_*` keys with OAuth, HMAC, or your tenant's scheme).
-4. Edit `app/server/routes/brands.py` and `entities.py` to expose the fields your customers actually need.
-5. Update `app/server/static/architecture.json` to reflect your actual data flow (the renderer reads this file at runtime).
-
----
-
-## Teardown
-
-```bash
-databricks bundle destroy --auto-approve
-# Manual steps the destroy does not cover:
-databricks postgres delete-project projects/<lakebase_project_id>
-databricks apps delete <app_name>
-# (the App has prevent_destroy: true; the Lakebase instance is not bundle-managed)
-```
-
----
-
-## Known caveats
-
-1. **`generate_demo_data` overwrites the source volumes.** Run it once for initial population; do not run it while demonstrating Live Change Propagation (it would erase the injected CDC event).
-2. **Synced-table pipelines can race ahead of the SDP run.** The Live Change Propagation status endpoint detects this (platinum reached, lakebase still empty) and re-triggers the synced-table pipeline once. The orchestration job runs them sequentially via `depends_on`.
-3. **Dev-mode UC schema prefix is automatic** (`dev_<user_short_name>_<schema>`). The 8 hardcoded paths in `src/pipeline/01_bronze.sql` and the SDK scripts will need to match. Either deploy in `prod` target (`mode: production`, no prefix) or rerun `scripts/snapshot_bundle.sh` and the hardcoded-path search in `Variables to configure` after each redeploy by a different user.
-4. **Pipeline IDs are workspace-scoped** and are generated by Databricks on first deploy. After the first deploy, fetch them with `databricks bundle summary` and paste them into `app/server/routes/propagation.py` (`SDP_PIPELINE_ID`, `SYNCED_PIPELINE_ID`) and `app/server/static/app.js` (`PROP_WS.sdpPipelineId`, `PROP_WS.syncPipelineId`).
+- Synthetic data. The training labels carry a deliberately high churn rate (about 40%) so the model has
+  signal to learn; it is not a market churn rate.
+- The reallocation estimate assumes 30% of an underperformer's trailing spend can move to the regional
+  benchmark and earn that ROI. That is a planning assumption to calibrate, not a forecast.
+- The renewal-risk model is a demonstration of the pattern (train, register, score, feed the prompt), not a
+  production-validated churn model.
