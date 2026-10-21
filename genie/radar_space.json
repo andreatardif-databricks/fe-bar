@@ -1,0 +1,108 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "00000000000000000000000000000010",
+    "question": [
+     "Which region has the lowest ROI?"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000000011",
+    "question": [
+     "Which brands have the highest renewal risk?"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000000012",
+    "question": [
+     "Which API endpoint shows renewal risk?"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000000013",
+    "question": [
+     "How much revenue could we gain by reallocating spend from underperforming campaigns?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "at_workspace_102126.renewal_radar.api_endpoint_catalog"
+   },
+   {
+    "identifier": "at_workspace_102126.renewal_radar.brand_radar"
+   },
+   {
+    "identifier": "at_workspace_102126.renewal_radar.campaign_actions"
+   },
+   {
+    "identifier": "at_workspace_102126.renewal_radar.gold_campaign_performance"
+   },
+   {
+    "identifier": "at_workspace_102126.renewal_radar.gold_reallocation_opportunity"
+   },
+   {
+    "identifier": "at_workspace_102126.renewal_radar.gold_regional_seasonality"
+   },
+   {
+    "identifier": "at_workspace_102126.renewal_radar.value_summary"
+   }
+  ]
+ },
+ "instructions": {
+  "example_question_sqls": [
+   {
+    "id": "00000000000000000000000000000020",
+    "question": [
+     "Which region has the lowest ROI?"
+    ],
+    "sql": [
+     "SELECT region, ROUND(SUM(revenue_usd)/SUM(spend_usd),2) AS roi, ROUND(SUM(spend_usd)) AS spend_usd FROM at_workspace_102126.renewal_radar.gold_regional_seasonality GROUP BY region ORDER BY roi"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000000021",
+    "question": [
+     "Which brands have the highest renewal risk?"
+    ],
+    "sql": [
+     "SELECT brand_name, region, tier, ROUND(arr_usd) AS arr_usd, ROUND(renewal_risk_score,2) AS churn_probability, risk_band FROM at_workspace_102126.renewal_radar.brand_radar ORDER BY renewal_risk_score DESC LIMIT 10"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000000022",
+    "question": [
+     "Which API endpoint shows renewal risk?"
+    ],
+    "sql": [
+     "SELECT method, path, purpose, authentication FROM at_workspace_102126.renewal_radar.api_endpoint_catalog WHERE lower(purpose) LIKE '%renewal risk%'"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000000023",
+    "question": [
+     "How much revenue could we gain by reallocating spend from underperforming campaigns?"
+    ],
+    "sql": [
+     "SELECT metric, ROUND(value) AS value, unit, definition FROM at_workspace_102126.renewal_radar.value_summary WHERE metric LIKE '%incremental%' OR metric LIKE '%shifted%'"
+    ]
+   }
+  ],
+  "text_instructions": [
+   {
+    "id": "00000000000000000000000000000030",
+    "content": [
+     "You answer questions for an account team at a creator-marketing platform using synthetic data.",
+     "ROI means attributed revenue divided by ad spend. Use roi_90d for current performance and roi for lifetime.",
+     "Renewal risk is a modelled churn probability in brand_radar (risk_band: low <40%, medium 40-65%, high >65%).",
+     "When asked which API endpoint or how to call something, answer from api_endpoint_catalog and state the method, path and purpose.",
+     "Recommendations in campaign_actions are AI-generated; say so when quoting them."
+    ]
+   }
+  ]
+ }
+}

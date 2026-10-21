@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Renewal Radar</title>
+<link rel="stylesheet" href="/static/radar.css">
+</head>
+<body>
+<aside class="side">
+  <div class="logo"><span class="dot"></span> Renewal Radar</div>
+  <nav id="tabs">
+    <button data-tab="outcome" class="on"><i>◎</i> Overview</button>
+    <button data-tab="risk"><i>⚑</i> Renewal risk</button>
+    <button data-tab="actions"><i>✦</i> AI actions</button>
+    <button data-tab="genie"><i>✎</i> Ask Genie</button>
+    <button data-tab="pipeline"><i>⛁</i> Data &amp; activity</button>
+  </nav>
+  <div class="role">
+    <label for="key">Viewing as</label>
+    <select id="key">
+      <option value="rr_demo_portfolio">Portfolio operator</option>
+      <option value="rr_demo_brand_0000">Brand · Aster Lane (low risk)</option>
+      <option value="rr_demo_brand_0118">Brand · Saffron Beauty (high risk)</option>
+      <option value="rr_demo_brand_0094">Brand · Orchard Beauty (95% churn)</option>
+    </select>
+    <p class="hint" id="rolehint"></p>
+  </div>
+</aside>
+
+<div class="shell">
+  <header class="top">
+    <div>
+      <div class="crumb">Traackr · <span id="crumb">Overview</span></div>
+      <h1 id="title">Overview</h1>
+    </div>
+    <div class="top-right">
+      <span class="tag live">Synthetic data</span>
+      <button id="theme" class="ghost" aria-label="Toggle light and dark theme">◐ Theme</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="outcome" class="pane on"><div id="ov"><div class="cards"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div></section>
+
+    <section id="risk" class="pane">
+      <div class="panel flush"><table id="risktable"><thead><tr><th>Brand</th><th>Region</th><th>Tier</th><th class="n">ARR</th><th class="n">Renewal</th><th class="n">Churn probability</th><th>Band</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <section id="actions" class="pane">
+      <div class="toolbar"><label id="actbrandwrap" for="actbrand">Brand <select id="actbrand"><option value="">Top fixes across the portfolio</option></select></label>
+        <span class="note" id="actsummary"></span></div>
+      <p class="note">Every brand gets at least one action, generated in the pipeline run from campaign metrics <em>and the brand's model risk score</em>, then served from Lakebase. <b>Fix</b>: move spend off an underperformer. <b>Scale</b>: build on a healthy campaign. <b>Win back</b>: re-engage a brand that has gone quiet. AI-generated: verify before acting.</p>
+      <div id="actionlist"></div>
+    </section>
+
+    <section id="genie" class="pane">
+      <div class="panel">
+        <h2>Ask the governed data</h2>
+        <p class="note">Runs as you in the curated Genie space. Every question is recorded below.</p>
+        <div class="ask"><input id="q" placeholder="Ask a question..." value="Which API endpoint shows renewal risk?"><button id="askbtn" class="primary">Ask</button></div>
+        <div id="answer"></div>
+      </div>
+      <div class="panel flush" id="histpanel">
+        <h2 class="pad">Questions asked <span class="note" id="histcount"></span></h2>
+        <table id="history"><thead><tr><th>When</th><th class="viewcol">View</th><th>Asked by</th><th>Question</th><th>Type</th><th class="n">ms</th><th>Result</th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <section id="pipeline" class="pane">
+      <div class="panel"><h2 id="runtitle">Latest orchestration run</h2><div id="run"></div></div>
+      <div class="panel flush"><h2 class="pad"><span id="reqtitle">Recent requests</span> <span class="note">(Lakebase <code>radar_app.request_log</code>)</span></h2>
+        <table id="reqs"><thead><tr><th>Time</th><th>Route</th><th class="n">Status</th><th class="n">ms</th><th>Caller</th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </main>
+</div>
+<script src="/static/radar.js"></script>
+</body>
+</html>
