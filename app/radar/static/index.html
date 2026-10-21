@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traackr Renewal Radar</title>
+<link rel="stylesheet" href="/static/radar.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>Renewal Radar</h1>
+    <p class="sub">Which brands are about to leave, which campaigns are burning budget, and what to do next. Synthetic data only.</p>
+  </div>
+  <label class="key">API key
+    <select id="key">
+      <option value="rr_demo_portfolio">Portfolio operator</option>
+      <option value="rr_demo_brand_0000">Brand: Aster Lane (ACC-0000)</option>
+      <option value="rr_demo_brand_0001">Brand: Brindle Athletics (ACC-0001)</option>
+    </select>
+  </label>
+</header>
+
+<nav id="tabs">
+  <button data-tab="outcome" class="on">Outcome</button>
+  <button data-tab="risk">Renewal risk</button>
+  <button data-tab="actions">AI actions</button>
+  <button data-tab="genie">Ask Genie</button>
+  <button data-tab="pipeline">Pipeline &amp; telemetry</button>
+</nav>
+
+<main>
+  <section id="outcome" class="pane on">
+    <div class="cards" id="cards"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+    <h2>ROI by region</h2>
+    <div id="region" class="bars"></div>
+    <p class="note" id="valuenote"></p>
+  </section>
+
+  <section id="risk" class="pane">
+    <h2 id="risktitle">Brands ranked by modelled churn probability</h2>
+    <table id="risktable"><thead><tr><th>Brand</th><th>Region</th><th>Tier</th><th class="n">ARR</th><th class="n">Renewal</th><th class="n">Risk</th><th>Band</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section id="actions" class="pane">
+    <h2>Persisted <code>ai_gen</code> actions</h2>
+    <p class="note">Each action is generated in the pipeline run from campaign metrics <em>and the brand's model risk score</em>, then served from Lakebase. AI-generated: verify before acting.</p>
+    <div id="actionlist"></div>
+  </section>
+
+  <section id="genie" class="pane">
+    <h2>Ask the governed data</h2>
+    <p class="note">Runs as you in the curated Genie space. Try "Which API endpoint shows renewal risk?" or "Which region has the lowest ROI?"</p>
+    <div class="ask"><input id="q" placeholder="Ask a question..." value="Which API endpoint shows renewal risk?"><button id="askbtn">Ask</button></div>
+    <div id="answer"></div>
+  </section>
+
+  <section id="pipeline" class="pane">
+    <h2>Latest orchestration run</h2>
+    <div id="run"></div>
+    <h2>Recent requests (Lakebase <code>radar_app.request_log</code>)</h2>
+    <table id="reqs"><thead><tr><th>Time</th><th>Route</th><th class="n">Status</th><th class="n">ms</th><th>Caller</th></tr></thead><tbody></tbody></table>
+  </section>
+</main>
+<script src="/static/radar.js"></script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+# Traackr Renewal Radar: creator-campaign intelligence served to brand portals.
+#
+#   databricks bundle deploy
+#   databricks bundle run radar_daily      # generate -> pipeline -> train -> score+ai_gen -> secure -> sync -> freshness
+#
+# The Lakebase project, Genie space and model endpoint are referenced by id so the same bundle
+# can point at another workspace through variables.
+
+bundle:
+  name: traackr-renewal-radar
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    default: at_workspace_102126
+  schema:
+    default: renewal_radar
+  warehouse_id:
+    default: ab3981ee46b198cc
+  lakebase_branch:
+    default: projects/renewal-radar-lb/branches/production
+  lakebase_endpoint:
+    default: projects/renewal-radar-lb/branches/production/endpoints/primary
+  lakebase_database_resource:
+    default: projects/renewal-radar-lb/branches/production/databases/databricks-postgres
+  pg_database:
+    default: databricks_postgres
+  genie_space_id:
+    default: 01f1cd55187c1612a46bd87e6dcfd7da
+
+targets:
+  main:
+    default: true
+    workspace:
+      root_path: ~/.bundle/${bundle.name}/${bundle.target}
+
+resources:
+  schemas:
+    radar:
+      name: ${var.schema}
+      catalog_name: ${var.catalog}
+      comment: "Renewal Radar - creator-campaign ROI, renewal risk and AI actions for Traackr brand clients"
+
+  volumes:
+    landing:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.radar.name}
+      name: landing
+      comment: Raw source drops (accounts, invoices, ad spend, social events, sales, CDC feeds)
+
+  pipelines:
+    radar_pipeline:
+      name: radar-medallion
+      catalog: ${var.catalog}
+      schema: ${resources.schemas.radar.name}
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      configuration:
+        radar.landing: /Volumes/${var.catalog}/${var.schema}/landing
+      libraries:
+        - file: { path: src/pipeline/10_bronze.sql }
+        - file: { path: src/pipeline/20_silver.sql }
+        - file: { path: src/pipeline/30_gold.sql }
+        - file: { path: src/pipeline/40_platinum.sql }
+
+  jobs:
+    radar_daily:
+      name: radar-daily-orchestration
+      description: Dependency-enforced run from raw drop to the Lakebase-served API
+      parameters:
+        - { name: catalog, default: "${var.catalog}" }
+        - { name: schema, default: "${var.schema}" }
+      environments:
+        - environment_key: data_env
+          spec:
+            client: "3"
+            dependencies: ["numpy", "pandas"]
+        - environment_key: ml_env
+          spec:
+            client: "3"
+            dependencies: ["scikit-learn", "mlflow>=3.1"]
+        - environment_key: sdk_env
+          spec:
+            client: "3"
+            dependencies: ["databricks-sdk>=0.102.0", "psycopg[binary]>=3.2"]
+      tasks:
+        - task_key: generate_sources
+          environment_key: data_env
+          notebook_task:
+            notebook_path: src/generate/generate_sources.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
+
+        - task_key: run_pipeline
+          depends_on: [{ task_key: generate_sources }]
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.radar_pipeline.id}
+
+        - task_key: train_renewal_risk
+          depends_on: [{ task_key: run_pipeline }]
+          environment_key: ml_env
+          notebook_task:
+            notebook_path: src/ml/train_renewal_risk.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
+
+        - task_key: score_and_recommend
+          depends_on: [{ task_key: train_renewal_risk }]
+          environment_key: ml_env
+          notebook_task:
+            notebook_path: src/ml/score_and_recommend.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
+
+        - task_key: publish_api_catalog
+          depends_on: [{ task_key: score_and_recommend }]
+          environment_key: data_env
+          notebook_task:
+            notebook_path: src/ops/publish_api_catalog.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
+
+        - task_key: secure_tables
+          depends_on: [{ task_key: publish_api_catalog }]
+          environment_key: data_env
+          notebook_task:
+            notebook_path: src/ops/secure_tables.py
+            base_parameters: { catalog: "${var.catalog}", schema: "${var.schema}" }
+
+        - task_key: sync_lakebase
+          depends_on: [{ task_key: secure_tables }]
+          environment_key: sdk_env
+          notebook_task:
+            notebook_path: src/ops/sync_lakebase.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+              branch: "${var.lakebase_branch}"
+              pg_database: "${var.pg_database}"
+
+        - task_key: freshness_check
+          depends_on: [{ task_key: sync_lakebase }]
+          environment_key: sdk_env
+          notebook_task:
+            notebook_path: src/ops/freshness_check.py
+            base_parameters:
+              catalog: "${var.catalog}"
+              schema: "${var.schema}"
+              endpoint: "${var.lakebase_endpoint}"
+              pg_database: "${var.pg_database}"
