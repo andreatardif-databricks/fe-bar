@@ -109,10 +109,16 @@ for label, method, path, key, body in [
     ("brand key asks for ANOTHER brand -> 404", "GET", "/v1/brands/ACC-0001/renewal-health", "rr_demo_brand_0000", None),
     ("brand key asks for portfolio data -> 403", "GET", "/v1/portfolio/summary", "rr_demo_brand_0000", None),
     ("no key -> 401", "GET", "/v1/portfolio/summary", "", None),
-    ("portfolio summary", "GET", "/v1/portfolio/summary", "rr_demo_portfolio", None),
+    ("portfolio summary (book, renewals, spend, top at-risk)", "GET", "/v1/portfolio/summary", "rr_demo_portfolio", None),
+    ("brand overview: the Saffron Beauty view", "GET", "/v1/brands/ACC-0118/overview", "rr_demo_brand_0118", None),
+    ("brand key cannot open another brand's overview -> 404", "GET", "/v1/brands/ACC-0094/overview", "rr_demo_brand_0118", None),
     ("top persisted ai_gen actions", "GET", "/v1/portfolio/actions?limit=2", "rr_demo_portfolio", None),
     ("live foundation-model explanation", "POST", "/v1/campaigns/explain", "rr_demo_portfolio", {"campaign_id": "CMP-00080"}),
     ("Genie: API question -> script, no SQL", "POST", "/v1/genie/ask", "rr_demo_portfolio", {"question": "Which API endpoint shows renewal risk?"}),
+    ("Genie asked from a BRAND view (scoped to that brand)", "POST", "/v1/genie/ask", "rr_demo_brand_0118", {"question": "What is our renewal risk?"}),
+    ("that brand's question history (only its own view)", "GET", "/v1/genie/history?limit=5", "rr_demo_brand_0118", None),
+    ("another brand's history is empty of those questions", "GET", "/v1/genie/history?limit=5", "rr_demo_brand_0094", None),
+    ("operator history: all views, with asker and view", "GET", "/v1/genie/history?limit=6", "rr_demo_portfolio", None),
     ("Genie: analytical question -> inspectable SQL", "POST", "/v1/genie/ask", "rr_demo_portfolio", {"question": "Which region has the lowest ROI?"}),
 ]:
     status, ms, text = call(method, path, key, body)

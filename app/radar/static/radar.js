@@ -2,7 +2,7 @@ const $ = (s) => document.querySelector(s);
 const money = (n) => "$" + Math.round(Number(n)).toLocaleString();
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const keyEl = $("#key");
-const TITLES = { outcome: "Overview", risk: "Renewal risk", actions: "AI actions", genie: "Ask Genie", pipeline: "Pipeline & telemetry" };
+const TITLES = { outcome: "Overview", risk: "Renewal risk", actions: "AI actions", genie: "Ask Genie", pipeline: "Data & activity" };
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { "X-Api-Key": keyEl.value, "Content-Type": "application/json", ...(opts.headers || {}) } });
@@ -45,38 +45,92 @@ async function load(tab) {
   if (tab === "pipeline") return pipeline();
 }
 
+const pct = (x, d = 0) => (Number(x) * 100).toFixed(d) + "%";
+const card = (cls, label, value, detail) => `<div class="card ${cls}"><div class="l">${label}</div><div class="v">${value}</div><div class="d">${detail}</div></div>`;
+const vs = (x, ref, label, higherIsBetter = true) => {
+  const diff = Number(x) - Number(ref);
+  const good = higherIsBetter ? diff >= 0 : diff <= 0;
+  return `<span class="${good ? "up" : "down"}">${diff >= 0 ? "▲" : "▼"} ${Math.abs(diff).toFixed(2)}</span> vs ${label}`;
+};
+
+const churnVs = (mine, ref, region) => {
+  const pts = Math.round((Number(mine) - Number(ref)) * 100);
+  return `<span class="${pts <= 0 ? "up" : "down"}">${pts <= 0 ? "▼" : "▲"} ${Math.abs(pts)} pts</span> vs ${esc(region)} average`;
+};
+
 async function outcome() {
-  const cards = $("#cards");
-  $("#mix").innerHTML = $("#mixlegend").innerHTML = $("#region").innerHTML = "";
-  if (!isPortfolio()) return brandOutcome(cards);
-  try {
-    const s = await api("/v1/portfolio/summary");
-    const by = Object.fromEntries(s.risk_by_band.map((b) => [b.risk_band, b]));
-    const high = by.high || { brands: 0, arr_usd: 0 };
-    const total = s.risk_by_band.reduce((a, b) => a + Number(b.arr_usd), 0);
-    const t = s.top_actions;
-    cards.innerHTML = `
-      <div class="card risk"><div class="l">ARR in brands scored high renewal risk</div><div class="v">${money(high.arr_usd)}</div><div class="d">${high.brands} brands · ${Math.round((high.arr_usd / total) * 100)}% of ${money(total)} portfolio ARR</div></div>
-      <div class="card good"><div class="l">Revenue from moving 30% of spend off underperformers</div><div class="v">${money(t.incremental_revenue_usd)}</div><div class="d">Across the ${t.campaigns} largest gaps · ROI below 1.0 vs regional benchmark</div></div>
-      <div class="card"><div class="l">90-day spend on those campaigns</div><div class="v">${money(t.spend_90d_usd)}</div><div class="d">Served from Lakebase, not a warehouse</div></div>`;
-    const colors = { high: "var(--high)", medium: "var(--med)", low: "var(--low)" };
-    $("#mix").innerHTML = ["high", "medium", "low"].filter((k) => by[k]).map((k) => `<span style="width:${(by[k].brands / s.risk_by_band.reduce((a, b) => a + b.brands, 0)) * 100}%;background:${colors[k]}"></span>`).join("");
-    $("#mixlegend").innerHTML = ["high", "medium", "low"].filter((k) => by[k]).map((k) => `<span><i class="sw" style="background:${colors[k]}"></i><b>${by[k].brands}</b> ${k} · ${money(by[k].arr_usd)}</span>`).join("");
-    const max = Math.max(...s.roi_by_region.map((r) => Number(r.roi)));
-    $("#region").innerHTML = s.roi_by_region.map((r) => `<div class="row"><span>${esc(r.region)}</span><div class="bar" style="width:${(Number(r.roi) / max) * 100}%"></div><span class="n">${esc(r.roi)}x</span></div>`).join("");
-    $("#valuenote").textContent = "Every figure is computed from governed rows; the sizing logic is gold_reallocation_opportunity in the pipeline.";
-  } catch (e) { fail(cards, e); }
+  const ov = $("#ov");
+  ov.innerHTML = '<div class="cards"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+  try { return isPortfolio() ? await portfolioOverview(ov) : await brandOverview(ov); } catch (e) { fail(ov, e); }
 }
 
-async function brandOutcome(cards) {
-  try {
-    const h = await api(`/v1/brands/${brandId()}/renewal-health`);
-    cards.innerHTML = `
-      <div class="card ${h.risk_band === "high" ? "risk" : "good"}"><div class="l">${esc(h.brand_name)} modelled churn probability</div><div class="v">${Math.round(h.renewal_risk_score * 100)}%</div><div class="d"><span class="pill ${esc(h.risk_band)}">${esc(h.risk_band)}</span> · ARR ${money(h.arr_usd)}</div></div>
-      <div class="card"><div class="l">90-day ROI of active campaigns</div><div class="v">${Number(h.avg_roi_180d).toFixed(2)}x</div><div class="d">${h.active_campaigns} campaigns active in the last 90 days</div></div>
-      <div class="card"><div class="l">Revenue trend, last 90 days</div><div class="v">${(h.revenue_trend_90d * 100).toFixed(0)}%</div><div class="d">Late invoices: ${(h.late_invoice_rate * 100).toFixed(0)}%</div></div>`;
-    $("#valuenote").textContent = "A brand-scoped key sees only its own account. Any other account id returns 404.";
-  } catch (e) { fail(cards, e); }
+async function portfolioOverview(ov) {
+  const s = await api("/v1/portfolio/summary");
+  const by = Object.fromEntries(s.risk_by_band.map((b) => [b.risk_band, b]));
+  const high = by.high || { brands: 0, arr_usd: 0 };
+  const bk = s.book, sp = s.spend, t = s.top_actions;
+  const total = s.risk_by_band.reduce((a, b) => a + Number(b.arr_usd), 0);
+  const nBrands = s.risk_by_band.reduce((a, b) => a + b.brands, 0);
+  const colors = { high: "var(--high)", medium: "var(--med)", low: "var(--low)" };
+  const max = Math.max(...s.roi_by_region.map((r) => Number(r.roi)));
+  ov.innerHTML = `
+    <div class="cards">
+      ${card("risk", "ARR in brands scored high renewal risk", money(high.arr_usd), `${high.brands} brands · ${Math.round((high.arr_usd / total) * 100)}% of ${money(total)} ARR`)}
+      ${card("risk", "Probability-weighted ARR at risk", money(bk.expected_loss_usd), `${pct(bk.expected_loss_usd / bk.arr_usd)} of ARR · synthetic labels run high`)}
+      ${card("", "Renewing within 90 days", `${bk.renewing_90d} brands`, `${money(bk.renewing_90d_arr)} ARR · <b>${bk.high_risk_renewing_90d}</b> high-risk (${money(bk.high_risk_renewing_90d_arr)})`)}
+      ${card("good", "Revenue from moving 30% of spend off underperformers", money(t.incremental_revenue_usd), `Across the ${t.campaigns} largest gaps · ${money(t.spend_90d_usd)} 90-day spend`)}
+    </div>
+    <div class="cards">
+      ${card("", "Portfolio ROI (lifetime)", Number(sp.roi).toFixed(2) + "x", `${money(sp.revenue_usd)} revenue on ${money(sp.spend_usd)} spend`)}
+      ${card("", "Campaigns", sp.campaigns.toLocaleString(), `${sp.active} active · <b>${sp.below_breakeven}</b> below break-even (90-day ROI &lt; 1.0)`)}
+      ${card("", "Average churn probability", pct(bk.avg_churn), `Across ${bk.brands} brands`)}
+      ${card("", "Genie questions asked", s.genie_questions, "Recorded in Lakebase; see Ask Genie")}
+    </div>
+    <div class="grid2">
+      <div class="panel"><h2>Renewal risk mix</h2>
+        <div class="mix">${["high", "medium", "low"].filter((k) => by[k]).map((k) => `<span style="width:${(by[k].brands / nBrands) * 100}%;background:${colors[k]}"></span>`).join("")}</div>
+        <div class="legend">${["high", "medium", "low"].filter((k) => by[k]).map((k) => `<span><i class="sw" style="background:${colors[k]}"></i><b>${by[k].brands}</b> ${k} · ${money(by[k].arr_usd)}</span>`).join("")}</div></div>
+      <div class="panel"><h2>ROI by region</h2><div class="bars">${s.roi_by_region.map((r) => `<div class="row"><span>${esc(r.region)}</span><div class="bar" style="width:${(Number(r.roi) / max) * 100}%"></div><span class="n">${esc(r.roi)}x</span></div>`).join("")}</div></div>
+    </div>
+    <div class="grid2">
+      <div class="panel flush"><h2 class="pad">Risk by region</h2><table><thead><tr><th>Region</th><th class="n">Brands</th><th class="n">ARR</th><th class="n">Avg churn</th><th class="n">High risk</th></tr></thead><tbody>
+        ${s.by_region.map((r) => `<tr><td>${esc(r.region)}</td><td class="n">${r.brands}</td><td class="n">${money(r.arr_usd)}</td><td class="n">${esc(r.avg_churn_pct)}%</td><td class="n">${r.high_risk}</td></tr>`).join("")}</tbody></table></div>
+      <div class="panel flush"><h2 class="pad">Top 5 brands by expected ARR loss</h2><table><thead><tr><th>Brand</th><th class="n">ARR</th><th class="n">Churn</th><th class="n">Renewal</th></tr></thead><tbody>
+        ${s.top_at_risk.map((r) => `<tr><td>${esc(r.brand_name)}<div class="sub">${esc(r.region)} · ${esc(r.tier)}</div></td><td class="n">${money(r.arr_usd)}</td><td class="n">${pct(r.renewal_risk_score)}</td><td class="n">${esc(String(r.renewal_date).slice(0, 10))}</td></tr>`).join("")}</tbody></table></div>
+    </div>
+    <p class="note">Every figure is computed from governed rows; the sizing logic is gold_reallocation_opportunity in the pipeline.</p>`;
+}
+
+async function brandOverview(ov) {
+  const o = await api(`/v1/brands/${brandId()}/overview`);
+  const b = o.brand, c = o.campaigns, a = o.actions, rp = o.risk_peers, rk = o.roi_rank;
+  const days = Number(b.days_to_renewal);
+  const renewal = days < 0 ? `renewal date passed ${-days} days ago` : `renews in ${days} days (${String(b.renewal_date).slice(0, 10)})`;
+  const hl = (x, label) => x && x.campaign_name ? `<div class="hl"><b>${label}</b> ${esc(x.campaign_name)}<div class="sub">${Number(x.roi).toFixed(2)}x ROI on ${money(x.spend_usd)} spend</div></div>` : "";
+  ov.innerHTML = `
+    <div class="cards">
+      ${card(b.risk_band === "high" ? "risk" : b.risk_band === "low" ? "good" : "", `${esc(b.brand_name)} modelled churn probability`, pct(b.renewal_risk_score), `<span class="pill ${esc(b.risk_band)}">${esc(b.risk_band)}</span> · ${churnVs(b.renewal_risk_score, rp.region_churn, b.region)}`)}
+      ${card("", "Annual recurring revenue", money(b.arr_usd), `${esc(b.tier)} tier · ${renewal}`)}
+      ${card("", "Lifetime ROI", Number(c.roi).toFixed(2) + "x", `${vs(c.roi, o.region_roi, esc(b.region) + " average")} · rank <b>${rk.rank}</b> of ${rk.brands} brands`)}
+      ${card("good", "Revenue if 30% of spend moves off weak campaigns", money(a.opportunity_usd), `${a.flagged} flagged campaigns · ${money(a.spend_90d_usd)} 90-day spend`)}
+    </div>
+    <div class="cards">
+      ${card("", "Total ad spend", money(c.spend_usd), `${c.campaigns} campaigns run for this brand`)}
+      ${card("", "Attributed revenue", money(c.revenue_usd), "Paid sales credited to creator campaigns")}
+      ${card("", "Campaign portfolio", `${c.active} active`, `${c.ended} ended · <b>${c.below_breakeven}</b> below break-even right now`)}
+      ${card("", "Revenue trend, last 90 days", pct(b.revenue_trend_90d), `Late invoices: ${pct(b.late_invoice_rate)}`)}
+    </div>
+    <div class="grid2">
+      <div class="panel flush"><h2 class="pad">What drives your score</h2><table><thead><tr><th>Driver</th><th class="n">You</th><th class="n">${esc(b.region)} / portfolio</th></tr></thead><tbody>
+        <tr><td>90-day ROI</td><td class="n">${Number(b.avg_roi_180d).toFixed(2)}x</td><td class="n">${Number(o.region_roi).toFixed(2)}x</td></tr>
+        <tr><td>Campaigns active in last 90 days</td><td class="n">${b.active_campaigns}</td><td class="n">—</td></tr>
+        <tr><td>Revenue trend (90 vs prior 90 days)</td><td class="n">${pct(b.revenue_trend_90d)}</td><td class="n">—</td></tr>
+        <tr><td>Late invoices</td><td class="n">${pct(b.late_invoice_rate)}</td><td class="n">—</td></tr>
+        <tr><td>Churn probability</td><td class="n">${pct(b.renewal_risk_score)}</td><td class="n">${pct(rp.region_churn)} / ${pct(rp.portfolio_churn)}</td></tr></tbody></table></div>
+      <div class="panel"><h2>Campaign highlights</h2>${hl(o.best_campaign, "Best")}${hl(o.worst_campaign, "Needs attention")}
+        <p class="note">${o.genie_questions} question${o.genie_questions === 1 ? "" : "s"} asked from this view. See Ask Genie.</p></div>
+    </div>
+    <p class="note">Scored by the registered champion model ${esc((b.model_uri || "").split("/").pop())} on ${esc(String(b.scored_at).slice(0, 10))}. Synthetic data.</p>`;
 }
 
 async function risk() {
@@ -111,19 +165,16 @@ async function actions() {
 async function history() {
   const body = $("#history tbody");
   const operator = isPortfolio();
-  $("#history").hidden = !operator;
-  $("#histnote").hidden = operator;
-  $("#histcount").textContent = "";
-  if (!operator) return;
+  document.querySelectorAll(".viewcol").forEach((c) => (c.hidden = !operator));
   try {
     const rows = await api("/v1/genie/history?limit=30");
-    $("#histcount").textContent = `(${rows.length} most recent)`;
-    body.innerHTML = rows.length ? rows.map((r) => `<tr><td>${esc(r.ts.slice(0, 19).replace("T", " "))}</td><td>${esc(r.asked_by || "—")}</td>
+    $("#histcount").textContent = operator ? `(all views, ${rows.length} most recent)` : `(asked from the ${esc($("#key").selectedOptions[0].textContent)} view)`;
+    body.innerHTML = rows.length ? rows.map((r) => `<tr><td>${esc(r.ts.slice(0, 19).replace("T", " "))}</td>${operator ? `<td><span class="tag">${esc(r.view || "—")}</span></td>` : ""}<td>${esc(r.asked_by || "—")}</td>
       <td>${esc(r.question)}${r.genie_url ? ` <a href="${esc(r.genie_url)}" target="_blank" rel="noopener">conversation</a>` : ""}</td>
       <td>${r.intent ? `<span class="tag">${esc(r.intent)}</span>` : ""}</td><td class="n">${esc(r.duration_ms)}</td>
       <td>${r.status === 200 ? '<span class="tag ok">answered</span>' : `<span class="tag bad" title="${esc(r.error)}">failed</span>`}</td></tr>`).join("")
-      : '<tr><td colspan="6" class="note">No questions yet.</td></tr>';
-  } catch (e) { body.innerHTML = `<tr><td colspan="6" class="err">${esc(e.message)}</td></tr>`; }
+      : `<tr><td colspan="${operator ? 7 : 6}" class="note">No questions asked from this view yet.</td></tr>`;
+  } catch (e) { body.innerHTML = `<tr><td colspan="7" class="err">${esc(e.message)}</td></tr>`; }
 }
 
 $("#askbtn").addEventListener("click", async () => {
@@ -142,17 +193,24 @@ $("#askbtn").addEventListener("click", async () => {
 
 async function pipeline() {
   const run = $("#run"), body = $("#reqs tbody");
-  if (!isPortfolio()) {
-    run.innerHTML = '<p class="note">Run timings and the request log are visible to portfolio operators only.</p>';
-    body.innerHTML = "";
-    return;
-  }
+  const operator = isPortfolio();
+  $("#runtitle").textContent = operator ? "Latest orchestration run" : "How fresh is your data";
+  $("#reqtitle").textContent = operator ? "Recent requests" : "Your recent API calls";
   try {
     const r = await api("/v1/pipeline/last-run");
-    run.innerHTML = `<p class="note">Run <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.run_id)}</a>: <span class="tag ${r.result === "SUCCESS" ? "ok" : "bad"}">${esc(r.result)}</span> ${r.total_seconds}s end to end</p>
-      <table><thead><tr><th>Task</th><th>Result</th><th class="n">Seconds</th></tr></thead><tbody>${r.tasks.map((t) => `<tr><td>${esc(t.task)}</td><td>${esc(t.result)}</td><td class="n">${t.seconds}</td></tr>`).join("")}</tbody></table>`;
+    if (operator) {
+      run.innerHTML = `<p class="note">Run <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.run_id)}</a>: <span class="tag ${r.result === "SUCCESS" ? "ok" : "bad"}">${esc(r.result)}</span> ${r.total_seconds}s end to end</p>
+        <table><thead><tr><th>Task</th><th>Result</th><th class="n">Seconds</th></tr></thead><tbody>${r.tasks.map((t) => `<tr><td>${esc(t.task)}</td><td>${esc(t.result)}</td><td class="n">${t.seconds}</td></tr>`).join("")}</tbody></table>`;
+    } else {
+      const o = await api(`/v1/brands/${brandId()}/overview`);
+      const done = r.finished_at_ms ? new Date(r.finished_at_ms).toLocaleString() : "unknown";
+      run.innerHTML = `<div class="cards flat">
+        ${card("", "Last refresh of your data", esc(done), `<span class="tag ${r.result === "SUCCESS" ? "ok" : "bad"}">${esc(r.result)}</span> full run took ${r.total_seconds}s`)}
+        ${card("", "Risk score computed", esc(String(o.brand.scored_at).slice(0, 16).replace("T", " ")), esc((o.brand.model_uri || "").split("/").pop()))}
+        ${card("", "Served from", "Lakebase", "Single-digit-millisecond reads for your brand portal")}</div>`;
+    }
     const rows = await api("/v1/telemetry/recent");
-    body.innerHTML = rows.map((x) => `<tr><td>${esc(x.ts.slice(11, 19))}</td><td>${esc(x.method)} ${esc(x.route)}</td><td class="n">${x.status}</td><td class="n">${esc(x.duration_ms)}</td><td>${esc(x.key_label || "")}</td></tr>`).join("");
+    body.innerHTML = rows.map((x) => `<tr><td>${esc(x.ts.slice(11, 19))}</td><td>${esc(x.method)} ${esc(x.route)}</td><td class="n">${x.status}</td><td class="n">${esc(x.duration_ms)}</td><td>${esc(x.key_label || "")}</td></tr>`).join("") || '<tr><td colspan="5" class="note">No calls yet.</td></tr>';
   } catch (e) { fail(run, e); }
 }
 

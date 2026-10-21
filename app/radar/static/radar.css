@@ -56,3 +56,5 @@ code { background:color-mix(in srgb,var(--line) 70%,transparent); padding:1px 5p
 .err { color:var(--high); } a { color:var(--brand); } td .sub { color:var(--mute); font-size:12px; }
 
 .pad { padding:0 18px 16px; } h2.pad { padding:16px 18px 10px; } [hidden] { display:none !important; }
+.up { color:var(--low); font-weight:600; } .down { color:var(--high); font-weight:600; }
+.hl { padding:10px 0; border-bottom:1px solid var(--line); } .hl:last-of-type { border-bottom:0; } .cards.flat { margin:0; }

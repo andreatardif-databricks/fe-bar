@@ -167,7 +167,7 @@ Every correction is in `docs/AI_BUILD_LOG.md`. The business framing, the custome
 3. Open AI actions: pick *Orchard Beauty Fall Push 80*, read the action, and click "Explain with live model".
 4. Ask Genie "Which API endpoint shows renewal risk?" and show the call and the conversation link.
 5. Ask "Which region has the lowest ROI?" and show the generated SQL.
-6. Switch to a brand key and show that another brand returns 404.
+6. Switch the viewer to Saffron Beauty: the overview, risk drivers and actions become that brand's, its Genie questions are logged under its own view, and another brand returns 404.
 
 ## Tell (30 seconds)
 "One governed pipeline takes raw feeds to a risk score and an action, serves it in single-digit milliseconds, and keeps each brand's data isolated at both the API and the table."

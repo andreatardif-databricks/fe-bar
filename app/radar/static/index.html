@@ -14,14 +14,15 @@
     <button data-tab="risk"><i>⚑</i> Renewal risk</button>
     <button data-tab="actions"><i>✦</i> AI actions</button>
     <button data-tab="genie"><i>✎</i> Ask Genie</button>
-    <button data-tab="pipeline"><i>⛁</i> Pipeline &amp; telemetry</button>
+    <button data-tab="pipeline"><i>⛁</i> Data &amp; activity</button>
   </nav>
   <div class="role">
     <label for="key">Viewing as</label>
     <select id="key">
       <option value="rr_demo_portfolio">Portfolio operator</option>
-      <option value="rr_demo_brand_0000">Brand · Aster Lane</option>
-      <option value="rr_demo_brand_0001">Brand · Brindle Athletics</option>
+      <option value="rr_demo_brand_0000">Brand · Aster Lane (low risk)</option>
+      <option value="rr_demo_brand_0118">Brand · Saffron Beauty (high risk)</option>
+      <option value="rr_demo_brand_0094">Brand · Orchard Beauty (95% churn)</option>
     </select>
     <p class="hint" id="rolehint"></p>
   </div>
@@ -40,14 +41,7 @@
   </header>
 
   <main>
-    <section id="outcome" class="pane on">
-      <div class="cards" id="cards"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-      <div class="grid2">
-        <div class="panel"><h2>Renewal risk mix</h2><div id="mix" class="mix"></div><div id="mixlegend" class="legend"></div></div>
-        <div class="panel"><h2>ROI by region</h2><div id="region" class="bars"></div></div>
-      </div>
-      <p class="note" id="valuenote"></p>
-    </section>
+    <section id="outcome" class="pane on"><div id="ov"><div class="cards"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div></section>
 
     <section id="risk" class="pane">
       <div class="panel flush"><table id="risktable"><thead><tr><th>Brand</th><th>Region</th><th>Tier</th><th class="n">ARR</th><th class="n">Renewal</th><th class="n">Churn probability</th><th>Band</th></tr></thead><tbody></tbody></table></div>
@@ -67,14 +61,13 @@
       </div>
       <div class="panel flush" id="histpanel">
         <h2 class="pad">Questions asked <span class="note" id="histcount"></span></h2>
-        <p class="note pad" id="histnote" hidden>The question log is visible to portfolio operators only, so one brand cannot see what others asked.</p>
-        <table id="history"><thead><tr><th>When</th><th>Asked by</th><th>Question</th><th>Type</th><th class="n">ms</th><th>Result</th></tr></thead><tbody></tbody></table>
+        <table id="history"><thead><tr><th>When</th><th class="viewcol">View</th><th>Asked by</th><th>Question</th><th>Type</th><th class="n">ms</th><th>Result</th></tr></thead><tbody></tbody></table>
       </div>
     </section>
 
     <section id="pipeline" class="pane">
-      <div class="panel"><h2>Latest orchestration run</h2><div id="run"></div></div>
-      <div class="panel flush"><h2 class="pad">Recent requests <span class="note">(Lakebase <code>radar_app.request_log</code>)</span></h2>
+      <div class="panel"><h2 id="runtitle">Latest orchestration run</h2><div id="run"></div></div>
+      <div class="panel flush"><h2 class="pad"><span id="reqtitle">Recent requests</span> <span class="note">(Lakebase <code>radar_app.request_log</code>)</span></h2>
         <table id="reqs"><thead><tr><th>Time</th><th>Route</th><th class="n">Status</th><th class="n">ms</th><th>Caller</th></tr></thead><tbody></tbody></table></div>
     </section>
   </main>

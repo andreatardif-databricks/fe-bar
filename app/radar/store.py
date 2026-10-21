@@ -77,6 +77,8 @@ def bootstrap() -> None:
         ("rr_demo_portfolio", "portfolio operator", "portfolio", None),
         ("rr_demo_brand_0000", "Aster Lane (ACC-0000)", "brand", "ACC-0000"),
         ("rr_demo_brand_0001", "Brindle Athletics (ACC-0001)", "brand", "ACC-0001"),
+        ("rr_demo_brand_0118", "Saffron Beauty (ACC-0118)", "brand", "ACC-0118"),
+        ("rr_demo_brand_0094", "Orchard Beauty (ACC-0094)", "brand", "ACC-0094"),
     ):
         execute(f"""INSERT INTO {APP_SCHEMA}.api_keys (key_hash, label, scope, account_id)
                     VALUES (%s, %s, %s, %s) ON CONFLICT (key_hash) DO NOTHING""",

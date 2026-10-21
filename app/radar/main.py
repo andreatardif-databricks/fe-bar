@@ -29,7 +29,7 @@ async def access_log(request: Request, call_next):
     response = await call_next(request)
     if request.url.path.startswith("/v1/") and request.url.path not in ("/v1/health", "/v1/genie/ask", "/v1/campaigns/explain"):
         store.log_request(request.url.path, request.method, response.status_code, (time.perf_counter() - t0) * 1000,
-                          None, {"query": str(request.url.query)})
+                          getattr(request.state, "caller_label", None), {"query": str(request.url.query)})
     return response
 
 
