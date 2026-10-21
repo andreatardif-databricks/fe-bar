@@ -103,6 +103,8 @@ The headline creator grew from **$5K in June to $402K in September**, with 97–
 - The app labels results “AI-generated — verify before acting.”
 - Genie is curated to governed tables and includes certified SQL examples.
 - Generated SQL and source tables remain inspectable.
+- MLflow persists every live model request, output, status, latency, and token usage to governed Unity Catalog tables.
+- The app persists OpenTelemetry-shaped request records to the governed `app_otel_logs` UC table.
 
 ---
 
@@ -150,8 +152,9 @@ The repository commits readable text proving:
 - Lakebase synchronization and live API responses
 - Genie answers with generated SQL
 - Stage and end-to-end propagation latency
+- MLflow `CHAT_MODEL` traces and app OTEL request logs persisted in UC
 
-Start with `EXECUTION_EVIDENCE.md`, `SYNTHETIC_DATA.md`, and `AI_GEN_RECOMMENDATIONS.sql` at the repository root; detailed supporting evidence remains under `evidence/`.
+Start with `RAW_EXECUTION_TRANSCRIPT.md`: it contains successful run `1013848902778635`, every task state, the deployed model response, the MLflow UC trace, and the app OTEL UC row. Then review `EXECUTION_EVIDENCE.md`, `SYNTHETIC_DATA.md`, and `AI_GEN_RECOMMENDATIONS.sql`.
 
 ---
 

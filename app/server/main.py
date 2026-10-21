@@ -14,6 +14,7 @@ from .routes import bundle as bundle_routes
 from .routes import insights as insights_routes
 from .routes import genie as genie_routes
 from . import auth
+from . import telemetry
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -29,6 +30,11 @@ class NoCacheStaticFiles(StaticFiles):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        telemetry.configure_tracing()
+        print("[startup] MLflow tracing configured for Unity Catalog")
+    except Exception as e:
+        print(f"[startup] could not configure MLflow tracing: {e}")
     try:
         n = auth.reload_brand_keys()
         print(f"[startup] {n} active API keys in Lakebase")

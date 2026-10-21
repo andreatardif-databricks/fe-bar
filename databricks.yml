@@ -158,12 +158,24 @@ resources:
             notebook_path: ./src/jobs/generate_ai_insights.py
           environment_key: sdk_env
 
+        - task_key: setup_observability
+          description: "Link MLflow traces to Unity Catalog and create governed app OTEL logs"
+          notebook_task:
+            notebook_path: ./src/deploy/setup_observability.py
+          environment_key: observability_env
+
       environments:
         - environment_key: sdk_env
           spec:
             client: "3"
             dependencies:
               - "psycopg[binary]==3.2.3"
+              - "databricks-sdk>=0.102.0"
+        - environment_key: observability_env
+          spec:
+            client: "3"
+            dependencies:
+              - "mlflow[databricks]>=3.11.0"
               - "databricks-sdk>=0.102.0"
 
     # Day-2 orchestration: refresh synthetic data, run pipeline, trigger

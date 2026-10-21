@@ -2,6 +2,8 @@
 
 ## Start Here: Verifiable AI and Runtime Proof
 
+- `RAW_EXECUTION_TRANSCRIPT.md` — pasted successful job state, live model response, MLflow UC trace, and app OTEL UC row.
+
 - Executable `ai_gen` SQL: [`AI_GEN_RECOMMENDATIONS.sql`](AI_GEN_RECOMMENDATIONS.sql)
 - Orchestrated AI job: [`src/jobs/generate_ai_insights.py`](src/jobs/generate_ai_insights.py)
 - Executable model-serving call: [`MODEL_ENDPOINT_RECOMMENDATION.py`](MODEL_ENDPOINT_RECOMMENDATION.py)

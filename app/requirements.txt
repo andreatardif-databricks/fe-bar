@@ -5,3 +5,6 @@ psycopg-pool>=3.2
 databricks-sdk>=0.40
 pyarrow==16.1.0
 markdown>=3.5
+mlflow[databricks]>=3.11.0
+opentelemetry-api>=1.28
+opentelemetry-sdk>=1.28

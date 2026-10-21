@@ -1,5 +1,7 @@
 # Readable Execution Evidence
 
+Start with `RAW_EXECUTION_TRANSCRIPT.md` for the directly reproduced CLI job transcript and raw MLflow/app OTEL Unity Catalog query output.
+
 This file contains actual text output captured from the deployed build. It is not expected output or a screenshot.
 
 ## 1. Integrated orchestration run
