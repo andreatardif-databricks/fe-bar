@@ -48,7 +48,9 @@
     </section>
 
     <section id="actions" class="pane">
-      <p class="note">Each action is generated in the pipeline run from campaign metrics <em>and the brand's model risk score</em>, then served from Lakebase. AI-generated: verify before acting.</p>
+      <div class="toolbar"><label id="actbrandwrap" for="actbrand">Brand <select id="actbrand"><option value="">Top fixes across the portfolio</option></select></label>
+        <span class="note" id="actsummary"></span></div>
+      <p class="note">Every brand gets at least one action, generated in the pipeline run from campaign metrics <em>and the brand's model risk score</em>, then served from Lakebase. <b>Fix</b>: move spend off an underperformer. <b>Scale</b>: build on a healthy campaign. <b>Win back</b>: re-engage a brand that has gone quiet. AI-generated: verify before acting.</p>
       <div id="actionlist"></div>
     </section>
 

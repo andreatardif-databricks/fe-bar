@@ -101,8 +101,9 @@ def explain(body: Explain, caller: Caller = Depends(security.caller)):
     row = store.one(f'SELECT * FROM "{store.SYNCED_SCHEMA}".synced_campaign_actions WHERE campaign_id = %s', (body.campaign_id,))
     if not row or not caller.can_read(row["account_id"]):
         raise HTTPException(404, "campaign not found")
-    prompt = (f"In two sentences, explain to an account manager why '{row['campaign_name']}' needs attention, using only: "
-              f"90-day ROI {row['roi_90d']}, regional benchmark {row['benchmark_roi']}, brand renewal risk {row['risk_band']} "
+    stance = {"fix": "needs attention", "scale": "is a candidate to scale", "reactivate": "needs to be won back"}.get(row.get("action_type"), "needs attention")
+    prompt = (f"In two sentences, explain to an account manager why '{row['campaign_name']}' {stance}, using only: "
+              f"ROI {row['roi_90d']}, regional benchmark {row['benchmark_roi']}, brand renewal risk {row['risk_band']} "
               f"({round(float(row['renewal_risk_score']) * 100)}% modelled). Existing action: {row['recommendation']}")
     t0 = time.perf_counter()
     with mlflow.start_span(name="campaign_explanation", span_type="CHAT_MODEL") as span:

@@ -19,6 +19,9 @@ const brandId = () => { const m = keyEl.value.match(/brand_(\d{4})/); return m ?
 const current = () => document.querySelector("#tabs .on").dataset.tab;
 
 function roleHint() {
+  const nav = document.querySelector('#tabs [data-tab="pipeline"]');
+  nav.hidden = !isPortfolio();
+  if (!isPortfolio() && current() === "pipeline") document.querySelector('#tabs [data-tab="outcome"]').click();
   $("#rolehint").textContent = isPortfolio() ? "Sees every brand and the portfolio views." : `Sees only ${brandId()}. Other brands return 404.`;
 }
 
@@ -112,7 +115,9 @@ async function brandOverview(ov) {
       ${card(b.risk_band === "high" ? "risk" : b.risk_band === "low" ? "good" : "", `${esc(b.brand_name)} modelled churn probability`, pct(b.renewal_risk_score), `<span class="pill ${esc(b.risk_band)}">${esc(b.risk_band)}</span> · ${churnVs(b.renewal_risk_score, rp.region_churn, b.region)}`)}
       ${card("", "Annual recurring revenue", money(b.arr_usd), `${esc(b.tier)} tier · ${renewal}`)}
       ${card("", "Lifetime ROI", Number(c.roi).toFixed(2) + "x", `${vs(c.roi, o.region_roi, esc(b.region) + " average")} · rank <b>${rk.rank}</b> of ${rk.brands} brands`)}
-      ${card("good", "Revenue if 30% of spend moves off weak campaigns", money(a.opportunity_usd), `${a.flagged} flagged campaigns · ${money(a.spend_90d_usd)} 90-day spend`)}
+      ${a.flagged > 0 ? card("good", "Revenue if 30% of spend moves off weak campaigns", money(a.opportunity_usd), `${a.flagged} flagged campaign${a.flagged === 1 ? "" : "s"} · ${money(a.spend_90d_usd)} 90-day spend`)
+        : a.scale > 0 ? card("good", "Revenue from adding 20% budget to your best campaign", money(a.scale_upside_usd), "No underperformers: the action is to scale what works")
+        : card("risk", "No campaign activity in 90 days", "Win-back", "The recommended action is to re-engage before renewal")}
     </div>
     <div class="cards">
       ${card("", "Total ad spend", money(c.spend_usd), `${c.campaigns} campaigns run for this brand`)}
@@ -141,17 +146,41 @@ async function risk() {
   } catch (e) { body.innerHTML = `<tr><td colspan="7" class="err">${esc(e.message)}</td></tr>`; }
 }
 
+const TYPE = { fix: "Fix", scale: "Scale", reactivate: "Win back" };
+function metricLine(r) {
+  const roi = r.roi_90d == null ? "n/a" : Number(r.roi_90d).toFixed(2) + "x";
+  const bm = r.benchmark_roi == null ? "" : ` vs benchmark ${Number(r.benchmark_roi).toFixed(2)}x`;
+  if (r.action_type === "scale") return `ROI ${roi}${bm} · ${money(r.spend_90d_usd)} 90-day spend · +${money(r.scale_upside_usd)}/yr if budget +20%`;
+  if (r.action_type === "reactivate") return `No campaign activity in 90 days · last campaign ROI ${roi}`;
+  return `90-day ROI ${roi}${bm} · ${money(r.spend_90d_usd)} spend · +${money(r.incremental_revenue_usd)}/yr if 30% moves`;
+}
+
+let brandListLoaded = false;
+async function loadBrandPicker() {
+  const wrap = $("#actbrandwrap"), sel = $("#actbrand");
+  wrap.hidden = !isPortfolio();
+  if (!isPortfolio() || brandListLoaded) return;
+  const rows = await api("/v1/portfolio/risk?limit=200");
+  rows.sort((a, b) => a.brand_name.localeCompare(b.brand_name) || a.account_id.localeCompare(b.account_id));
+  sel.insertAdjacentHTML("beforeend", rows.map((r) => `<option value="${esc(r.account_id)}">${esc(r.brand_name)} (${esc(r.account_id)}) · ${esc(r.risk_band)} risk</option>`).join(""));
+  brandListLoaded = true;
+}
+$("#actbrand").addEventListener("change", actions);
+
 async function actions() {
   const list = $("#actionlist");
   list.innerHTML = '<div class="skeleton"></div>';
   try {
-    const recs = await api(isPortfolio() ? "/v1/portfolio/actions?limit=15" : `/v1/brands/${brandId()}/recommendations`);
+    await loadBrandPicker();
+    const chosen = isPortfolio() ? $("#actbrand").value : brandId();
+    const recs = await api(chosen ? `/v1/brands/${chosen}/recommendations` : "/v1/portfolio/actions?limit=15");
+    $("#actsummary").textContent = recs.length ? `${recs.length} action${recs.length === 1 ? "" : "s"}` : "";
     list.innerHTML = recs.length ? recs.map((r) => `
-      <div class="item"><div class="t"><span>${esc(r.campaign_name)}</span><span class="pill ${esc(r.risk_band)}">${esc(r.risk_band)} risk</span></div>
-        <div class="m">90-day ROI ${Number(r.roi_90d).toFixed(2)}x vs benchmark ${Number(r.benchmark_roi).toFixed(2)}x · ${money(r.spend_90d_usd)} spend · +${money(r.incremental_revenue_usd)}/yr if 30% moves</div>
+      <div class="item"><div class="t"><span>${esc(r.campaign_name)}</span><span class="tags"><span class="tag ${esc(r.action_type)}">${esc(TYPE[r.action_type] || r.action_type)}</span><span class="pill ${esc(r.risk_band)}">${esc(r.risk_band)} risk</span></span></div>
+        <div class="m">${metricLine(r)}</div>
         <div>${esc(r.recommendation)}</div>
         <p><button data-c="${esc(r.campaign_id)}">Explain with live model</button> <span class="note" id="ex-${esc(r.campaign_id)}"></span></p></div>`).join("")
-      : '<p class="note">No flagged campaigns for this brand.</p>';
+      : '<p class="note">No actions for this brand.</p>';
     list.querySelectorAll("button").forEach((b) => b.addEventListener("click", async () => {
       const out = document.getElementById("ex-" + b.dataset.c); out.textContent = "calling model...";
       try {
@@ -193,24 +222,12 @@ $("#askbtn").addEventListener("click", async () => {
 
 async function pipeline() {
   const run = $("#run"), body = $("#reqs tbody");
-  const operator = isPortfolio();
-  $("#runtitle").textContent = operator ? "Latest orchestration run" : "How fresh is your data";
-  $("#reqtitle").textContent = operator ? "Recent requests" : "Your recent API calls";
   try {
     const r = await api("/v1/pipeline/last-run");
-    if (operator) {
-      run.innerHTML = `<p class="note">Run <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.run_id)}</a>: <span class="tag ${r.result === "SUCCESS" ? "ok" : "bad"}">${esc(r.result)}</span> ${r.total_seconds}s end to end</p>
-        <table><thead><tr><th>Task</th><th>Result</th><th class="n">Seconds</th></tr></thead><tbody>${r.tasks.map((t) => `<tr><td>${esc(t.task)}</td><td>${esc(t.result)}</td><td class="n">${t.seconds}</td></tr>`).join("")}</tbody></table>`;
-    } else {
-      const o = await api(`/v1/brands/${brandId()}/overview`);
-      const done = r.finished_at_ms ? new Date(r.finished_at_ms).toLocaleString() : "unknown";
-      run.innerHTML = `<div class="cards flat">
-        ${card("", "Last refresh of your data", esc(done), `<span class="tag ${r.result === "SUCCESS" ? "ok" : "bad"}">${esc(r.result)}</span> full run took ${r.total_seconds}s`)}
-        ${card("", "Risk score computed", esc(String(o.brand.scored_at).slice(0, 16).replace("T", " ")), esc((o.brand.model_uri || "").split("/").pop()))}
-        ${card("", "Served from", "Lakebase", "Single-digit-millisecond reads for your brand portal")}</div>`;
-    }
+    run.innerHTML = `<p class="note">Run <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.run_id)}</a>: <span class="tag ${r.result === "SUCCESS" ? "ok" : "bad"}">${esc(r.result)}</span> ${r.total_seconds}s end to end</p>
+      <table><thead><tr><th>Task</th><th>Result</th><th class="n">Seconds</th></tr></thead><tbody>${r.tasks.map((t) => `<tr><td>${esc(t.task)}</td><td>${esc(t.result)}</td><td class="n">${t.seconds}</td></tr>`).join("")}</tbody></table>`;
     const rows = await api("/v1/telemetry/recent");
-    body.innerHTML = rows.map((x) => `<tr><td>${esc(x.ts.slice(11, 19))}</td><td>${esc(x.method)} ${esc(x.route)}</td><td class="n">${x.status}</td><td class="n">${esc(x.duration_ms)}</td><td>${esc(x.key_label || "")}</td></tr>`).join("") || '<tr><td colspan="5" class="note">No calls yet.</td></tr>';
+    body.innerHTML = rows.map((x) => `<tr><td>${esc(x.ts.slice(11, 19))}</td><td>${esc(x.method)} ${esc(x.route)}</td><td class="n">${x.status}</td><td class="n">${esc(x.duration_ms)}</td><td>${esc(x.key_label || "")}</td></tr>`).join("");
   } catch (e) { fail(run, e); }
 }
 

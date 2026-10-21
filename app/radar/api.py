@@ -44,10 +44,13 @@ class CampaignKpi(BaseModel):
 class Recommendation(BaseModel):
     campaign_id: str
     campaign_name: str
+    region: str | None = None
+    action_type: str          # fix | scale | reactivate
     spend_90d_usd: float
-    roi_90d: float
-    benchmark_roi: float
+    roi_90d: float | None = None
+    benchmark_roi: float | None = None
     incremental_revenue_usd: float
+    scale_upside_usd: float = 0.0
     risk_band: str
     renewal_risk_score: float
     recommendation: str
@@ -90,7 +93,8 @@ def brand_campaigns(account_id: str, status: str | None = None, limit: int = Que
 def brand_recommendations(account_id: str, caller: Caller = Depends(security.caller)):
     security.require_brand_access(caller, account_id)
     return [_clean(r) for r in store.rows(
-        f'SELECT * FROM "{S}".synced_campaign_actions WHERE account_id = %s ORDER BY incremental_revenue_usd DESC', (account_id,))]
+        f'SELECT * FROM "{S}".synced_campaign_actions WHERE account_id = %s '
+        "ORDER BY (action_type = 'fix') DESC, incremental_revenue_usd DESC, scale_upside_usd DESC", (account_id,))]
 
 
 @router.get("/portfolio/risk", operation_id="listPortfolioRisk", summary="Brands ranked by modelled renewal risk")
@@ -111,7 +115,7 @@ def portfolio_risk(limit: int = Query(25, le=200), band: str | None = None, call
 def portfolio_actions(limit: int = Query(25, le=100), caller: Caller = Depends(security.caller)):
     security.require_portfolio(caller)
     return [_clean(r) for r in store.rows(
-        f'SELECT * FROM "{S}".synced_campaign_actions ORDER BY incremental_revenue_usd DESC LIMIT %s', (limit,))]
+        f"SELECT * FROM \"{S}\".synced_campaign_actions WHERE action_type = 'fix' ORDER BY incremental_revenue_usd DESC LIMIT %s", (limit,))]
 
 
 @router.get("/portfolio/summary", operation_id="getPortfolioSummary", summary="Portfolio headline numbers computed live from Lakebase")
@@ -120,7 +124,8 @@ def portfolio_summary(caller: Caller = Depends(security.caller)):
     risk = store.rows(f'''SELECT risk_band, COUNT(*)::int AS brands, ROUND(SUM(arr_usd)::numeric, 0) AS arr_usd
                           FROM "{S}".synced_brand_radar GROUP BY risk_band ORDER BY risk_band''')
     opp = store.one(f'''SELECT COUNT(*)::int AS campaigns, ROUND(SUM(incremental_revenue_usd)::numeric, 0) AS incremental_revenue_usd,
-                        ROUND(SUM(spend_90d_usd)::numeric, 0) AS spend_90d_usd FROM "{S}".synced_campaign_actions''')
+                        ROUND(SUM(spend_90d_usd)::numeric, 0) AS spend_90d_usd FROM "{S}".synced_campaign_actions WHERE action_type = 'fix'
+                        ''')
     roi = store.rows(f'''SELECT region, ROUND((SUM(revenue_usd) / NULLIF(SUM(spend_usd), 0))::numeric, 2) AS roi
                          FROM "{S}".synced_campaign_roi GROUP BY region ORDER BY region''')
     book = store.one(f'''SELECT COUNT(*)::int AS brands, SUM(arr_usd)::float AS arr_usd, AVG(renewal_risk_score)::float AS avg_churn,
@@ -141,8 +146,10 @@ def portfolio_summary(caller: Caller = Depends(security.caller)):
     top = store.rows(f'''SELECT account_id, brand_name, region, tier, arr_usd, renewal_date, renewal_risk_score,
                         (renewal_risk_score * arr_usd) AS expected_loss_usd FROM "{S}".synced_brand_radar
                         ORDER BY renewal_risk_score * arr_usd DESC LIMIT 5''')
+    by_type = store.rows(f'SELECT action_type, COUNT(*)::int AS actions, COUNT(DISTINCT account_id)::int AS brands FROM "{S}".synced_campaign_actions GROUP BY action_type ORDER BY action_type')
+    covered = store.one(f'SELECT COUNT(DISTINCT account_id)::int AS n FROM "{S}".synced_campaign_actions')
     asked = store.one(f"SELECT COUNT(*)::int AS n FROM {store.APP_SCHEMA}.request_log WHERE route = '/v1/genie/ask'")
-    return {"risk_by_band": [_clean(r) for r in risk], "top_actions": _clean(opp or {}), "roi_by_region": [_clean(r) for r in roi],
+    return {"actions_by_type": [_clean(r) for r in by_type], "brands_with_actions": covered["n"] if covered else 0, "risk_by_band": [_clean(r) for r in risk], "top_actions": _clean(opp or {}), "roi_by_region": [_clean(r) for r in roi],
             "book": _clean(book or {}), "spend": _clean(spend or {}), "by_region": [_clean(r) for r in by_region],
             "top_at_risk": [_clean(r) for r in top], "genie_questions": asked["n"] if asked else 0}
 
@@ -167,7 +174,11 @@ def brand_overview(account_id: str, caller: Caller = Depends(security.caller)):
                       SELECT (COUNT(*) FILTER (WHERE roi > (SELECT roi FROM per WHERE account_id = %s)) + 1)::int AS rank, COUNT(*)::int AS brands FROM per''', (account_id,))
     best = store.one(f'SELECT campaign_name, roi::float, spend_usd::float FROM "{S}".synced_campaign_roi WHERE account_id = %s AND spend_usd > 1000 ORDER BY roi DESC LIMIT 1', (account_id,))
     worst = store.one(f'SELECT campaign_name, roi::float, spend_usd::float FROM "{S}".synced_campaign_roi WHERE account_id = %s AND spend_usd > 1000 ORDER BY roi ASC LIMIT 1', (account_id,))
-    acts = store.one(f'SELECT COUNT(*)::int AS flagged, COALESCE(SUM(incremental_revenue_usd), 0)::float AS opportunity_usd, COALESCE(SUM(spend_90d_usd), 0)::float AS spend_90d_usd FROM "{S}".synced_campaign_actions WHERE account_id = %s', (account_id,))
+    acts = store.one(f'''SELECT COUNT(*)::int AS actions, COUNT(*) FILTER (WHERE action_type = 'fix')::int AS flagged,
+                       COUNT(*) FILTER (WHERE action_type = 'scale')::int AS scale, COUNT(*) FILTER (WHERE action_type = 'reactivate')::int AS reactivate,
+                       COALESCE(SUM(incremental_revenue_usd), 0)::float AS opportunity_usd, COALESCE(SUM(scale_upside_usd), 0)::float AS scale_upside_usd,
+                       COALESCE(SUM(spend_90d_usd) FILTER (WHERE action_type = 'fix'), 0)::float AS spend_90d_usd
+                       FROM "{S}".synced_campaign_actions WHERE account_id = %s''', (account_id,))
     asked = store.one(f"SELECT COUNT(*)::int AS n FROM {store.APP_SCHEMA}.request_log WHERE route = '/v1/genie/ask' AND detail->>'account_id' = %s", (account_id,))
     return {"brand": _clean(b), "campaigns": _clean(c or {}), "region_roi": (peers or {}).get("region_roi"), "risk_peers": _clean(risk_peers or {}),
             "roi_rank": _clean(rank or {}), "best_campaign": _clean(best or {}), "worst_campaign": _clean(worst or {}),

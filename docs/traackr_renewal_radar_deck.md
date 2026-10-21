@@ -101,11 +101,12 @@ The top gaps are named in the app, for example *Orchard Beauty Fall Push 80*: 90
 
 - **A trained model, not a prompt.** Gradient-boosted renewal-risk classifier trained on 540 renewal cycles, **holdout AUC 0.80**, registered in Unity Catalog (`renewal_risk`, `champion` alias). It is only promoted if it holds up against the current champion.
 - **The model and the Gen AI layer work together.** The `ai_gen` prompt receives the campaign's metrics *and the brand's modelled churn probability*, so a campaign on a brand at 95% risk is handled differently from one at 5%.
+- **Every brand gets an action.** All 120 brands have at least one, chosen by situation: **fix** (32 actions across 25 brands with an underperforming campaign), **scale** (61 healthy brands: build on the best campaign) and **win back** (34 brands with no campaign activity in 90 days, a retention play). The pipeline fails if any brand is left without one.
 - **Persisted, not generated on page open.** Actions are written in the pipeline run, synced to Lakebase and served in milliseconds. A separate route calls the foundation model on demand for an explanation, with the endpoint name, latency and token use returned.
 - **Inspectable.** Genie answers analytical questions with its generated SQL. For "which API endpoint…" questions it answers from a governed catalog and shows an executable call, not SQL.
 - **Labelled** "AI-generated — verify before acting."
 
-Known weakness: for high-risk brands the generated action is still fairly generic ("prioritise retention…"). Tying it to specific creator swaps is the next improvement.
+Known weakness: for high-risk brands the generated actions are repetitive ("move budget to retention-focused channels…"), because the prompt tells the model to put retention first. Tying them to specific creator swaps is the next improvement.
 
 ---
 
@@ -164,7 +165,7 @@ Every correction is in `docs/AI_BUILD_LOG.md`. The business framing, the custome
 ## Show (3 minutes)
 1. Open on the outcome page: the two numbers and ROI by region.
 2. Open Renewal risk: brands ranked by modelled churn probability.
-3. Open AI actions: pick *Orchard Beauty Fall Push 80*, read the action, and click "Explain with live model".
+3. Open AI actions, choose a brand (every brand has one), read its action, and click "Explain with live model". Compare a fix for Orchard Beauty with a scale action for Aster Lane.
 4. Ask Genie "Which API endpoint shows renewal risk?" and show the call and the conversation link.
 5. Ask "Which region has the lowest ROI?" and show the generated SQL.
 6. Switch the viewer to Saffron Beauty: the overview, risk drivers and actions become that brand's, its Genie questions are logged under its own view, and another brand returns 404.
