@@ -723,8 +723,7 @@
     return `${PROP_WS.host}/pipelines/${pid}/updates/${updateId}?o=${PROP_WS.orgId}`;
   }
   function cdcVolumeUrl(entity) {
-    const sub = entity === 'creator' ? 'creators' : 'campaigns';
-    return `${PROP_WS.host}/explore/data/volumes/${PROP_WS.cdcVolumePath}/${sub}?o=${PROP_WS.orgId}`;
+    return `${PROP_WS.host}/explore/data/volumes/${PROP_WS.cdcVolumePath}?o=${PROP_WS.orgId}`;
   }
   function lakebaseInstanceUrl() {
     return `${PROP_WS.host}/compute/database-instances/${PROP_WS.lakebaseInstance}?o=${PROP_WS.orgId}`;
@@ -1109,7 +1108,7 @@
     if (!c) return;
     setStageLinks('raw', [
       { href: cdcVolumeUrl(c.entity), label: 'volume',
-        title: 'Open the cdc_events volume in Catalog Explorer' },
+        title: `Open the cdc_events volume in Catalog Explorer, then select the ${c.entity === 'creator' ? 'creators' : 'campaigns'} folder` },
     ]);
     setStageLinks('bronze', [
       { href: sdpUpdateUrl(c.run_id), label: 'SDP run',
