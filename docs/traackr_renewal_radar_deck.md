@@ -46,7 +46,58 @@ What this means for the build: the product is not a dashboard. It is retention i
 - Measured on time-to-insight, data-freshness SLA (freshness gate passes in the orchestrated run) and API reliability.
 
 ## End users: brand marketing teams
-- See their own campaigns, ROI versus regional benchmark, and a persisted AI action. A brand-scoped key can only ever see that brand.
+- See their own overview, risk drivers, campaigns and AI actions, and ask Genie about their own data. A brand-scoped key can only ever see that brand, and Genie questions are logged under the view they came from.
+
+---
+
+# Who uses it, and why
+
+| Login | Who they are | What they are trying to do | Tabs they use |
+|---|---|---|---|
+| **Portfolio operator** | Traackr Customer Success leaders and account managers | Keep revenue: find who is at risk and where to spend their time | Overview · Renewal risk · AI actions · Ask Genie · Data & activity |
+| **Brand view** | A brand client's marketing team (previewing what Traackr's portal serves) | Prove creator spend works and decide where to move budget | Overview · Renewal risk · AI actions · Ask Genie |
+| **API key** | A developer on Traackr's brand portal | Serve the same data inside the product | The `/v1` API, scoped by key |
+
+Data & activity is an operator concern, so brand views do not see it.
+
+---
+
+# Journey: the portfolio operator
+
+| Tab | What they do | Why | Example from the demo data |
+|---|---|---|---|
+| **Overview** | Open it first each week | See where the money is at risk before opening any list | $6.1M of $17.8M ARR sits in 46 high-risk brands; 50 brands renew within 90 days, 22 of them high-risk ($2.9M) |
+| **Renewal risk** | Work down the ranked list | Decide who to call first | A brand at 95% churn comes ahead of a small brand at 70% |
+| **AI actions** | Pick a brand, read its action | Walk into the call with a specific recommendation | Fix, scale or win back, by the brand's situation |
+| **Ask Genie** | Ask questions in plain English | Get answers without waiting for an analyst | "How many brands are high risk?" returns 46, with the SQL shown |
+| **Data & activity** | Check the last pipeline run and request log | Confirm the numbers are fresh before quoting them | Last full run: 592 s, every task listed |
+
+A typical week: read the headline on Overview, open Renewal risk, take the three highest-risk brands renewing soonest, read each brand's action, and go into the call with it. Genie covers the questions the screens do not.
+
+---
+
+# Journey: the brand view
+
+| Tab | What they do | Why | Example |
+|---|---|---|---|
+| **Overview** | See their own health | Know whether they are on track before renewal | **Aster Lane:** 5% churn, renews in 61 days, ROI 1.86x vs the regional 1.88x, rank 67 of 120 |
+| **Renewal risk** | See their score and what moves it | Understand why the platform flags them | **Saffron Beauty:** 80% churn, 25 points above the EMEA average |
+| **AI actions** | Read what to do next | Move budget with evidence | **Saffron Beauty:** three campaigns under 0.7x ROI; moving 30% of that spend is worth about $136K a year. **Aster Lane:** scale its best campaign, worth about $51K |
+| **Ask Genie** | Ask about their own data | Self-serve answers | Their questions appear only in their own view's log |
+
+The reason a brand uses it: their boss asks whether the creator budget is working, and this answers with campaign-level ROI and a specific move.
+
+---
+
+# How to read the numbers
+
+*Example: "Saffron Beauty modelled churn probability 80%, high, 25 pts above the EMEA average"*
+
+- **80%** is the model's predicted chance the brand does not renew, learned from 540 past renewal cycles.
+- **High** means above 65%. The bands are low under 40%, medium 40–65% and high above 65%.
+- **25 pts** means 25 *percentage points* above the average EMEA brand (55%). It is red because higher churn is worse. The average enterprise-tier brand is 36%.
+- **Why it is high:** 90-day ROI of 1.28x against 2.01x for the region, and three campaigns under 0.7x. The app does not yet compute a per-brand breakdown of the score; this reading comes from the features, not the model.
+- **Read it as a ranking, not a forecast.** The synthetic training history is deliberately high-churn (about 40%), so the portfolio averages 49%. 80% against 55% is the signal; the absolute figure is not.
 
 ---
 
